@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<!--
+##### KUNDLI MATCH PROJECT : HANDOFF (Claude: read this whole comment first) #####
+STATUS: PART 6 of 6 DONE (COMPLETE). NEXT TO BUILD: nothing. Offer fixes only.
+HOW THE USER CONTINUES: the user attaches this file in a new chat and writes "next" (or "agla part" / "aage"). Then build ONLY the next part named in STATUS. Do not ask questions.
+WORKFLOW FOR CLAUDE
+1. Say in one short line which part you are building. Reply in Hindi (user writes Hindi/Hinglish), short and mobile friendly.
+2. Do NOT retype the whole file. Copy it to /home/claude, apply edits with a python patch script (string replace with assert count==1, new blocks inserted before the closing body tag), save as /mnt/user-data/outputs/kundli_match_partN.html (N = new part number), run a node syntax check on every script block plus the engine on 2 sample births, then present_files. Do not publish it as an artifact; the user wants a downloadable file.
+3. In the new file update this header: STATUS line and the [DONE]/[TODO] marks. Keep this whole header and all earlier code.
+4. If STATUS says PART 6 DONE, tell the user the project is complete and offer fixes only.
+ARCHITECTURE (do not break)
+- The original single kundli tool is untouched. Everything lives in #vk, ids start with vk-. The astronomy engine is inside the first IIFE.
+- Part 1 exposes window.VKCORE = {N,R,SG,NK,PF,PN,LORD,DL,DY,CITY,CCZ,pos,retro,asc,JD,zoff,V,nk,dm,ay,AVT}. pos(jd) returns 9 sidereal longitudes in order Su,Mo,Ma,Me,Ju,Ve,Sa,Ra,Ke (Lahiri). asc(jd,lat,lon) is the sidereal ascendant longitude. V(L,n) is the varga sign index of longitude L for D-n. SG = sign names (0 = Aries).
+- Mode bar #vk-mode switches Single / Match (also opens with #match in the URL). Match panel is #vk-match with forms ids vk-a-* (Partner 1) and vk-b-* (Partner 2), button #vk-m-go, error box #vk-m-err, result box #vk-mres.
+- After Calculate: window.VKMATCH = {part,A,B}. Person object: {nm,gn,y,m,d,tm,unk,lat,lon,tz,place,jd,L[9],A,rt[9],birth(ms UTC)}. unk=true means birth time unknown, so ascendant, houses and D-charts are unreliable; use Moon based results and show a warning.
+- Later parts add renderers with window.VKM_HOOKS.push(function(M,el){...}). Hooks run after every calculation; el is #vk-m-hooks inside #vk-mres. Put each part in its own script block before the closing body tag, starting with a comment /* ===== PART n ===== */. Reuse classes vk-card, vk-n, vk-w, vk-tabs, vk-sec, vk-auto and the CSS variables. UI text is English like the original; the AI prompt output is Hindi.
+- Direction for Ashtakoota: Partner 1 = groom side, Partner 2 = bride side, unless genders are set and reversed (Female/Male); for other cases keep the entered order and show a small note.
+PLAN
+PART 1 [DONE]: this header, mode bar, two birth forms with place search and city fallback, validation, calculation of both persons, birth summary cards, VKCORE, VKMATCH, VKM_HOOKS.
+PART 2 [DONE]: Ashtakoota Guna Milan engine, 36 points from both Moon positions: Varna 1, Vashya 2, Tara 3, Yoni 4, Graha Maitri 5, Gana 6, Bhakoot 7, Nadi 8. Result table (obtained / max / short meaning), total, pass mark 18, verdict bands (below 18 low, 18-24 average, 25-32 good, 33+ excellent). Standard lookup tables, verify with 2 known examples. Hook id #vk-m-koota. Exposes window.VKM_KOOTA={calc(groomMoonLon,brideMoonLon),tables}; after render M.K={rows[{k,name,max,got,detail}],total,max,pass,verdict{key,label,txt},det{...yoni/gana/nadi names, bhakootDosha, bhakootType, nadiDosha},flip,note,groom:'a'|'b'} and M.part=2. Part 3 should reuse M.K.det for dosha exceptions.
+PART 3 [DONE]: Doshas and chart compatibility: Manglik (Mars in 1,2,4,7,8,12 from Lagna, Moon and Venus; severity; mutual cancellation), Nadi and Bhakoot dosha exceptions, Gana exceptions, Kaal Sarp, 7th house analysis (sign, lord, occupants, Venus and Jupiter strength), Navamsa D9 check, Moon to Moon house relation, afflictions of Sun/Moon/Venus. Skip Lagna based items when unk=true. Hook id #vk-m-dosha. Exposes window.VKM_DOSHA={build(M)}; after render M.D={manglik{a,b,res},nadi,bhakoot,gana (each {st:'ok'|'warn'|'bad',res,txt}),kaal{a,b},h7{a,b},ven{a,b},jup{a,b},d9{a,b},aff{a,b},moonRel,moonDist,la,lb} and M.part=3. Part 5 should reuse M.D for strengths and concerns.
+PART 4 [DONE]: Timing and strength: refactor the Vimshottari dasha logic into a function taking a person, current Mahadasha/Antardasha of both, overlap and harmony, marriage windows (7th lord, Venus, Jupiter periods), Saturn and Jupiter transits over the 7th house and Moon, Sade Sati status, Ashtakavarga SAV of 7th house and Venus BAV, next 5 year harmony timeline. Hook id #vk-m-timing. VKCORE now also exposes AVT (Ashtakavarga table). Exposes window.VKM_TIMING={build(M),dtable,at,hm}; after render M.T={now,a/b{table,supp{set,lord,from,s7},cur{m,a},tr{js,ss,hj,hsat,jupOk,satOk,jup7,sat7,sade,sadeOn},av{B,sav,tot,h7,v7,j7,moon,h1,h2,h11}|null,win[]},hMaha,hAnt,nextChange,overlapEnd,sade{a,b},line[{s,e,xa,xb,h,la,lb,jp,sade,score,lab,st}]} and M.part=4. M.now can override the current time for tests.
+PART 5 [DONE]: Visual results: score gauge (SVG), 8 koota bars, both kundli charts side by side (North/South toggle), strengths and concerns cards, overall verdict, Hindi/English toggle for result text, print, WhatsApp share text, copy summary. Hook id #vk-m-visual (inserted at the top of #vk-m-hooks, containing #vk-m5-sum summary and #vk-m5-ch charts). Exposes window.VKM_VISUAL={overall(M),notes(M,'en'|'hi'),share(M,'en'|'hi'),setLang(l)}; after render M.V={overall{pct,key:'strong'|'good'|'mixed'|'low',comps[{k,w,v}]},lang:{en:{S[],C[]},hi:{S[],C[]}}} and M.part=5. Part 6 should reuse M.V.lang.hi (strengths S and concerns C) and M.V.overall in the AI prompt. Overall = Guna 50% + doshas 15% + charts 20% + timing 15%, capped at 'mixed' when Guna is below 18. Charts: both D1 (Moon chart when time unknown) and D9, North/South toggle, stacked on narrow phones.
+PART 6 [DONE]: Couple AI prompt (simple Hindi and detailed Hindi, same rules as the original prompt, with both charts, kootas, doshas, dashas, the couple's question and topic), copy and open ChatGPT/Claude/Gemini, saved couple profiles in localStorage (key vk_couples_v1), remove #vk-m-wip note, accessibility and mobile QA, SEO title/meta for the match feature, final test, STATUS = PART 6 DONE (COMPLETE). Implemented: hook #vk-m-prompt (appended after Part 4), window.VKM_PROMPT={build(M,style 'simple'|'tech',topic,question),topics}, M.part=6. Saved couples use localStorage key vk_couples_v1 (card #vk-m6-saved at the top of #vk-match; Part 1 now exposes window.VKM_ST and window.VKM_PLACE for restoring the place). #vk-m-wip note removed from Part 1. Title and meta now cover Kundli Matching, and the page title and URL hash follow the mode bar.
+##### END HANDOFF #####
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="vk-match-part" content="6">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#6a2c91">
+<meta name="description" content="Free Vedic kundli tool: get your birth chart and AI prompt, or match two kundlis with Guna Milan, doshas and dasha timing for marriage.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="Vedic Birth Chart Insights &amp; Kundli Matching – Free Kundli Tool">
+<meta property="og:description" content="Free Vedic kundli tool: get your birth chart and AI prompt, or match two kundlis with Guna Milan, doshas and dasha timing for marriage.">
+<meta name="twitter:card" content="summary">
+<title>Vedic Birth Chart Insights &amp; Kundli Matching – Free Kundli Tool for Love, Marriage &amp; Career</title>
+<style>
+#vk{--bg:#fff;--fg:#221b33;--card:#f6f1fb;--ac:#6a2c91;--ln:#a8742c;--or:#c4560a;--bd:#d9cde8;box-sizing:border-box;max-width:680px;margin:20px auto;padding:16px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:14px;font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:left}
+#vk *,#vk *::before,#vk *::after{box-sizing:border-box}
+#vk [hidden]{display:none!important}
+#vk div,#vk p,#vk ol,#vk li,#vk summary,#vk label,#vk td,#vk th,#vk h3{color:var(--fg);font-family:inherit}
+#vk .vk-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+#vk .vk-title{font-size:22px;font-weight:700;line-height:1.45;margin:0}
+#vk h3{font-size:17px;font-weight:700;line-height:1.45;margin:18px 0 8px;padding:0;border:0;text-transform:none;letter-spacing:normal}
+#vk .vk-card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:14px 0}
+#vk summary{cursor:pointer;font-size:16px;margin:0;padding:0}
+#vk .vk-r{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#vk label{display:block;font-size:14px;font-weight:600;margin:12px 0 4px;padding:0}
+#vk input,#vk select,#vk textarea{display:block;width:100%;max-width:100%;height:auto;margin:0;padding:10px!important;font:inherit;line-height:1.4;color:var(--fg)!important;background:#fff!important;border:1px solid var(--bd)!important;border-radius:8px!important;box-shadow:none!important}
+#vk textarea{resize:vertical;min-height:90px}
+#vk #vk-out{font:12px/1.45 ui-monospace,Menlo,Consolas,monospace!important;min-height:300px;margin-top:10px}
+#vk button{display:block;width:100%;margin:12px 0 0;padding:10px 16px!important;font:inherit;font-weight:600;line-height:1.45;text-transform:none;letter-spacing:normal;cursor:pointer;color:#fff!important;background:var(--ac)!important;border:0!important;border-radius:8px!important;box-shadow:none!important}
+#vk button.vk-auto{display:inline-block;width:auto;margin:0}
+#vk button.vk-sec{color:var(--fg)!important;background:var(--card)!important;border:1px solid var(--bd)!important}
+#vk .vk-tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+#vk .vk-tabs button{padding:7px 13px!important}
+#vk .vk-tabs button.vk-on{color:#fff!important;background:var(--ac)!important;border-color:var(--ac)!important}
+#vk .vk-tabs select{width:auto}
+#vk .vk-w{overflow-x:auto}
+#vk table{width:100%;margin:0;border-collapse:collapse;border:0;font-size:13px}
+#vk td,#vk th{padding:6px 8px!important;text-align:left;white-space:nowrap;background:transparent!important;border:0!important;border-bottom:1px solid var(--bd)!important}
+#vk th{font-weight:700;background:var(--card)!important}
+#vk svg{display:block;width:100%;max-width:440px;height:auto;margin:0 auto}
+#vk svg text{fill:var(--fg)}
+#vk .vk-sn{fill:var(--or)!important;font-weight:700}
+#vk ol{margin:10px 0 0;padding:0 0 0 22px;list-style:decimal}
+#vk li{margin:6px 0;padding:0;list-style:decimal}
+#vk a{color:var(--ac);text-decoration:underline}
+#vk .vk-n{font-size:13px;line-height:1.5;opacity:.85;margin:8px 0}
+@media(max-width:480px){#vk{margin:10px 0;padding:12px;border-radius:10px}#vk .vk-title{font-size:19px}#vk .vk-card{padding:12px}}
+
+/* ===== Responsive / cross-browser additions ===== */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding:0 12px;padding-left:max(12px,env(safe-area-inset-left));padding-right:max(12px,env(safe-area-inset-right));padding-bottom:env(safe-area-inset-bottom);background:linear-gradient(180deg,#f5effb 0,#ece3f6 100%);background-attachment:fixed;min-height:100vh;-webkit-font-smoothing:antialiased}
+#vk{width:100%;max-width:760px;overflow-wrap:break-word;word-wrap:break-word;
+font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+#vk .vk-r>*{min-width:0}
+#vk .vk-top{flex-wrap:wrap}
+#vk input,#vk select,#vk textarea{min-height:44px;-webkit-appearance:none;appearance:none;-webkit-text-size-adjust:100%}
+#vk select{-webkit-appearance:menulist;appearance:auto;text-overflow:ellipsis}
+#vk input[type=date],#vk input[type=time]{-webkit-appearance:none;appearance:none;min-width:0}
+#vk input::-webkit-date-and-time-value{text-align:left;min-height:1.4em}
+#vk textarea{min-height:90px}
+#vk button{min-height:44px;touch-action:manipulation;-webkit-appearance:none;appearance:none}
+#vk .vk-tabs button{min-height:40px}
+#vk .vk-w{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+#vk svg{max-width:min(100%,480px)}
+#vk summary{-webkit-tap-highlight-color:transparent}
+#vk :focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+#vk .vk-n,#vk td,#vk th{-webkit-text-size-adjust:100%}
+@media(max-width:600px){#vk .vk-tabs select{flex:1 1 140px}}
+@media(max-width:480px){
+body{padding-left:max(6px,env(safe-area-inset-left));padding-right:max(6px,env(safe-area-inset-right))}
+#vk{margin:8px auto}
+#vk #vk-out{font-size:16px!important;min-height:240px}
+#vk .vk-tabs button{flex:1 1 auto}
+}
+@media(max-width:380px){
+#vk .vk-r:not([style]){grid-template-columns:1fr}
+#vk .vk-title{font-size:17px}
+#vk{padding:10px}
+}
+@media(min-width:900px){body{padding-top:12px;padding-bottom:12px}}
+@media print{body{background:#fff;padding:0}#vk{border:0;max-width:none;margin:0}#vk button{display:none!important}}
+
+/* ===== Light placeholder text ===== */
+#vk input::placeholder,#vk textarea::placeholder{color:#b7aec6!important;opacity:1;font-weight:400}
+#vk input::-webkit-input-placeholder{color:#b7aec6!important;opacity:1}
+#vk input::-moz-placeholder{color:#b7aec6!important;opacity:1}
+
+
+/* ===== Ad slots (stay hidden until AdSense IDs are set) ===== */
+.vk-ad{box-sizing:border-box;width:100%;max-width:760px;margin:18px auto;text-align:center;overflow:hidden}
+.vk-ad[hidden]{display:none!important}
+.vk-ad .vk-adl{display:block;margin:0 0 4px;font:11px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;letter-spacing:0;color:#7a6f8a}
+.vk-ad ins{display:block}
+</style>
+<style id="vk-ready-css">
+#vk .vk-ready{position:relative;margin:14px 0;padding:14px 44px 14px 14px;border-radius:12px;background:#e8f5ec;border:1px solid #9ccfae;color:#1d5a35}
+#vk .vk-ready[hidden]{display:none}
+#vk .vk-ready b{display:block;font-size:16px;margin-bottom:4px}
+#vk .vk-ready p{margin:0 0 4px;font-size:14px;line-height:1.5}
+#vk .vk-ready button.vk-x{position:absolute;top:6px;right:6px;display:grid;place-items:center;width:36px;min-height:36px;height:36px;margin:0;padding:0!important;background:transparent!important;color:#1d5a35!important;border-radius:50%!important;font-size:24px;line-height:1}
+#vk .vk-ready button.vk-x:hover{background:rgba(29,90,53,.12)!important}
+</style>
+<style>
+#vk .vk-r3{display:grid;grid-template-columns:1fr 1.3fr 1.2fr;gap:8px}
+#vk .vk-r3:has(#vk-th){grid-template-columns:1fr 1fr 1.3fr}
+#vk label.vk-chk{display:flex;align-items:center;gap:10px;font-weight:500;margin:14px 0 4px;padding:10px;background:#fff;border:1px dashed var(--bd);border-radius:8px;cursor:pointer}
+#vk label.vk-chk input{display:inline-block;width:20px;height:20px;flex:none;padding:0!important;margin:0}
+#vk #vk-tzw select,#vk #vk-tuw select,#vk #vk-city{margin-top:4px}
+#vk #vk-cityb{font-size:14px;padding:7px 12px!important}
+#vk select{min-height:44px}
+#vk input#vk-dy{min-height:44px}
+#vk a.vk-ai{display:inline-block;padding:8px 14px;min-height:40px;font-weight:600;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:8px;text-decoration:none}#vk a.vk-ai:hover{border-color:var(--ac)}#vk #vk-kf{line-height:1.8}
+@media(max-width:380px){#vk .vk-r3{grid-template-columns:1fr 1fr}#vk .vk-r3 #vk-dy,#vk .vk-r3 #vk-tap{grid-column:1/-1}}
+</style>
+<style>
+#vk .vk-hide{display:none!important}
+#vk .vk-mode{margin:12px 0 4px}
+#vk #vk-match select,#vk #vk-match input{margin-top:0}
+#vk #vk-mres h3{margin-top:14px}
+#vk #vk-match th{width:45%}
+</style>
+<style>
+#vk .vk5-track{height:10px;border-radius:5px;background:#e6dcf1;overflow:hidden}
+#vk .vk5-fill{height:100%;border-radius:5px}
+#vk .vk5-chip{display:inline-block;margin:3px 6px 3px 0;padding:3px 10px;font-size:13px;background:#fff;border:1px solid var(--bd);border-radius:999px}
+#vk .vk5-chip b{color:inherit}
+#vk .vk5-li{margin:7px 0;padding:2px 0 2px 10px;border-left:4px solid var(--bd)}
+#vk .vk5-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:10px}
+#vk .vk5-grid>*{min-width:0}
+@media print{#vk-mode,#vk-match>p,#vk-match>.vk-card,#vk-m-err,#vk-m-go,#vk-m-wip,.vk-ad{display:none!important}#vk .vk-card,#vk .vk5-li{break-inside:avoid}}
+</style>
+<style>
+#vk #vk-m6-out{font:12px/1.45 ui-monospace,Menlo,Consolas,monospace!important;min-height:300px;margin-top:4px}
+#vk #vk-m-prompt label{margin-top:12px}
+@media(max-width:480px){#vk #vk-m6-out{font-size:16px!important;min-height:240px}}
+@media print{#vk-m-prompt,#vk-m6-saved{display:none!important}}
+</style>
+</head>
+<body>
+<noscript><p style="padding:16px;font-family:sans-serif">JavaScript must be enabled to use this tool.</p></noscript>
+<div class="vk-ad" data-slot="top" hidden></div>
+<div id="vk"><div class="vk-top"><div class="vk-title">Create your prompt</div></div>
+<div class="vk-tabs vk-mode" id="vk-mode"><button type="button" class="vk-sec vk-auto" data-m="single">Single Kundli</button><button type="button" class="vk-sec vk-auto" data-m="match">Kundli Match (Couple)</button></div>
+<div id="vk-match" class="vk-hide"></div>
+<p class="vk-n" style="margin:6px 0 0">Enter your birth details to get your birth chart (kundli) and a ready-to-paste AI prompt. It takes about a minute. Your date and time of birth are processed in your browser and are not sent anywhere; only the place name is sent to OpenStreetMap to find its coordinates.</p>
+<div class="vk-card">
+<div id="vk-pfw" hidden><label>Saved profiles</label><div class="vk-r" style="grid-template-columns:1fr auto"><select id="vk-pf"></select><button id="vk-pd" class="vk-sec vk-auto">Delete profile</button></div><div class="vk-n">Profiles are saved only on this device.</div></div>
+<h3 style="margin-top:0">Step 1 &#183; Birth details <span style="font-weight:400;font-size:13px">(* required)</span></h3>
+<label>Name (optional)</label><input id="vk-nm" placeholder="e.g. Pawan" autocomplete="off">
+<label>Gender (optional)</label><select id="vk-gn"><option value="">Prefer not to say</option><option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option></select>
+<label>Date of birth<span style="color:#c4560a" aria-hidden="true"> *</span></label>
+<div class="vk-r3"><select id="vk-dd" aria-label="Birth day"></select><select id="vk-dm" aria-label="Birth month"></select><input id="vk-dy" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="Year, e.g. 1995" autocomplete="off" aria-label="Birth year (4 digits)"></div>
+<input id="vk-dt" type="hidden">
+<div id="vk-tbox">
+<label>Time of birth<span style="color:#c4560a" aria-hidden="true"> *</span></label>
+<div class="vk-r3"><select id="vk-th" aria-label="Hour"></select><select id="vk-tmn" aria-label="Minute"></select><select id="vk-tap" aria-label="AM or PM"><option value="">AM / PM</option><option value="AM">AM (morning)</option><option value="PM">PM (afternoon/night)</option></select></div>
+</div>
+<input id="vk-tm" type="hidden">
+<label class="vk-chk"><input type="checkbox" id="vk-tkn"><span>I do not know my exact birth time</span></label>
+<div id="vk-tuw" hidden><label for="vk-tup">Estimate: around what time of day were you born?</label><select id="vk-tup"><option value="m">Morning (6 AM to 12 PM)</option><option value="a">Afternoon (12 PM to 4 PM)</option><option value="e">Evening (4 PM to 8 PM)</option><option value="n">Night (8 PM to 12 AM)</option><option value="l">Late night / pre-dawn (12 AM to 6 AM)</option><option value="x" selected>No idea at all</option></select><div class="vk-n" style="color:#b3261e">&#9888; Without the exact time, the ascendant (Lagna) and houses are not reliable. A reading will still be created, but it will rely more on the Moon sign and dasha.</div></div>
+<input id="vk-tu" type="hidden">
+<label>Place of birth<span style="color:#c4560a" aria-hidden="true"> *</span></label><div class="vk-r" style="grid-template-columns:1fr auto"><input id="vk-pq" placeholder="City, state, country, e.g. Jaipur, Rajasthan, India"><button id="vk-ps" class="vk-auto">Search</button></div>
+<div class="vk-n" id="vk-pm"></div>
+<div class="vk-n"><button type="button" id="vk-cityb" class="vk-auto vk-sec">Having trouble searching? Pick from the list of major cities</button></div>
+<select id="vk-city" hidden aria-label="Major cities"></select>
+<div id="vk-tzw" hidden><label for="vk-tzs">Time zone of birth place<span style="color:#c4560a" aria-hidden="true"> *</span></label><select id="vk-tzs"><option value="">— Select —</option><option value="America/New_York">USA: Eastern (New York, Washington)</option><option value="America/Chicago">USA: Central (Chicago, Texas)</option><option value="America/Denver">USA: Mountain (Denver)</option><option value="America/Phoenix">USA: Arizona</option><option value="America/Los_Angeles">USA: Pacific (Los Angeles, California)</option><option value="America/Anchorage">USA: Alaska</option><option value="Pacific/Honolulu">USA: Hawaii</option><option value="America/Toronto">Canada: Eastern (Toronto)</option><option value="America/Winnipeg">Canada: Central (Winnipeg)</option><option value="America/Edmonton">Canada: Mountain (Edmonton)</option><option value="America/Vancouver">Canada: Pacific (Vancouver)</option><option value="America/Halifax">Canada: Atlantic (Halifax)</option><option value="Australia/Sydney">Australia: Sydney, Melbourne</option><option value="Australia/Brisbane">Australia: Brisbane</option><option value="Australia/Adelaide">Australia: Adelaide</option><option value="Australia/Darwin">Australia: Darwin</option><option value="Australia/Perth">Australia: Perth</option><option value="Europe/Moscow">Russia: Moscow</option><option value="Asia/Yekaterinburg">Russia: Yekaterinburg</option><option value="Asia/Novosibirsk">Russia: Novosibirsk</option><option value="Asia/Vladivostok">Russia: Vladivostok</option><option value="America/Sao_Paulo">Brazil: São Paulo</option><option value="America/Mexico_City">Mexico: Mexico City</option><option value="Asia/Jakarta">Indonesia: Jakarta</option><option value="Europe/Lisbon">Portugal / similar to UK time</option><option value="Africa/Johannesburg">South Africa</option><option value="Asia/Dubai">Gulf: Dubai, Oman</option><option value="Asia/Kolkata">India</option></select><div class="vk-n">This country has more than one time zone. Choose the one that matches your birth place.</div></div>
+<input id="vk-lat" type="hidden"><input id="vk-lon" type="hidden"><input id="vk-tz" type="hidden">
+<h3>Step 2 &#183; What would you like to know?</h3><label>Topic</label><select id="vk-cat"></select>
+<label>Answer style</label><select id="vk-ans"><option value="simple">Simple and clear (easy language, no astrology jargon)</option><option value="tech">Detailed (with astrological terms)</option></select>
+<label>Your question or situation</label><textarea id="vk-q" style="min-height:80px;font:inherit" placeholder="e.g. Why do my relationships keep following the same pattern? What should I focus on in my love life this year?"></textarea>
+<div class="vk-n" id="vk-err" role="alert" style="color:#b3261e;font-weight:600" hidden></div>
+<button id="vk-go">Create my prompt</button>
+</div>
+<div id="vk-res" hidden><div class="vk-ready" id="vk-ready" role="status" hidden><button type="button" class="vk-x" id="vk-rx" aria-label="Close this message">&times;</button><b id="vk-rt"></b><p id="vk-rp"></p><button type="button" class="vk-sec vk-auto" id="vk-ca" hidden style="margin-top:10px">Copy again</button></div>
+<div class="vk-card"><h3 style="margin-top:0">Step 3 &#183; Copy your prompt</h3><div class="vk-n">Paste it into ChatGPT, Claude or Gemini. The prompt tells the AI to reply in simple Hindi.</div><button id="vk-cp">Copy prompt</button><div class="vk-tabs"><span class="vk-n" style="margin:0">Copy and open:</span><a class="vk-ai" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a><a class="vk-ai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a><a class="vk-ai" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a></div><textarea id="vk-out" style="margin-top:8px"></textarea></div>
+<div class="vk-ad" data-slot="mid" hidden></div>
+<div class="vk-card" id="vk-kf"></div>
+<h3>Birth chart</h3>
+<div class="vk-n" id="vk-tuw2" hidden style="color:#b3261e;font-weight:600">&#9888; You gave an approximate birth time, so the ascendant, houses and divisional charts are not reliable. Insights based on the Moon sign are more dependable.</div>
+<div class="vk-tabs" id="vk-tabs"></div>
+<div class="vk-tabs"><select id="vk-vsel"></select><button id="vk-sty" class="vk-sec vk-auto">Style: North Indian</button></div>
+<h3 id="vk-ct"></h3><div id="vk-chart"></div>
+<div class="vk-w"><table id="vk-tb"></table></div>
+<div class="vk-n" id="vk-sr"></div>
+<h3>Ashtakavarga (houses 1&#8211;12 from the ascendant)</h3><div class="vk-w"><table id="vk-av"></table></div>
+<div class="vk-ad" data-slot="bottom" hidden></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/tz-lookup@6/tz.js" defer></script>
+<script>
+(function(){
+const $=i=>document.getElementById('vk-'+i),R=Math.PI/180,N=a=>(a%360+360)%360;
+const SG=['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+const GN={Female:'Female',Male:'Male',Other:'Other'};
+const PN=['Su','Mo','Ma','Me','Ju','Ve','Sa','Ra','Ke'],PF=['Sun','Moon','Mars','Mercury','Jupiter','Venus','Saturn','Rahu','Ketu'];
+const LORD=[2,5,3,1,0,3,5,2,4,6,6,4].map(i=>PF[i]);
+const NK='Ashwini,Bharani,Krittika,Rohini,Mrigashira,Ardra,Punarvasu,Pushya,Ashlesha,Magha,Purva Phalguni,Uttara Phalguni,Hasta,Chitra,Swati,Vishakha,Anuradha,Jyeshtha,Mula,Purva Ashadha,Uttara Ashadha,Shravana,Dhanishta,Shatabhisha,Purva Bhadrapada,Uttara Bhadrapada,Revati'.split(',');
+const YG='Vishkambha,Priti,Ayushman,Saubhagya,Shobhana,Atiganda,Sukarma,Dhriti,Shula,Ganda,Vriddhi,Dhruva,Vyaghata,Harshana,Vajra,Siddhi,Vyatipata,Variyana,Parigha,Shiva,Siddha,Sadhya,Shubha,Shukla,Brahma,Indra,Vaidhriti'.split(',');
+const TT='Pratipada,Dwitiya,Tritiya,Chaturthi,Panchami,Shashthi,Saptami,Ashtami,Navami,Dashami,Ekadashi,Dwadashi,Trayodashi,Chaturdashi'.split(',');
+const KM=['Bava','Balava','Kaulava','Taitila','Gara','Vanija','Vishti (Bhadra)'];
+const DL=['Ketu','Venus','Sun','Moon','Mars','Rahu','Jupiter','Saturn','Mercury'],DY=[7,20,6,10,7,18,16,19,17];
+const CITY=[['Delhi',28.61,77.21,'Asia/Kolkata'],['Gurugram',28.46,77.03,'Asia/Kolkata'],['Noida',28.54,77.39,'Asia/Kolkata'],['Rohtak',28.89,76.61,'Asia/Kolkata'],['Hisar',29.15,75.72,'Asia/Kolkata'],['Karnal',29.69,76.99,'Asia/Kolkata'],['Panipat',29.39,76.97,'Asia/Kolkata'],['Chandigarh',30.73,76.78,'Asia/Kolkata'],['Ludhiana',30.9,75.86,'Asia/Kolkata'],['Amritsar',31.63,74.87,'Asia/Kolkata'],['Jaipur',26.91,75.79,'Asia/Kolkata'],['Agra',27.18,78.02,'Asia/Kolkata'],['Meerut',28.98,77.71,'Asia/Kolkata'],['Lucknow',26.85,80.95,'Asia/Kolkata'],['Kanpur',26.45,80.35,'Asia/Kolkata'],['Varanasi',25.32,83.01,'Asia/Kolkata'],['Patna',25.59,85.14,'Asia/Kolkata'],['Kolkata',22.57,88.36,'Asia/Kolkata'],['Mumbai',19.08,72.88,'Asia/Kolkata'],['Pune',18.52,73.86,'Asia/Kolkata'],['Ahmedabad',23.02,72.57,'Asia/Kolkata'],['Bhopal',23.26,77.41,'Asia/Kolkata'],['Indore',22.72,75.86,'Asia/Kolkata'],['Nagpur',21.15,79.09,'Asia/Kolkata'],['Hyderabad',17.39,78.49,'Asia/Kolkata'],['Bengaluru',12.97,77.59,'Asia/Kolkata'],['Chennai',13.08,80.27,'Asia/Kolkata'],['Dehradun',30.32,78.03,'Asia/Kolkata'],['Kathmandu',27.72,85.32,'Asia/Kathmandu'],['Dubai',25.2,55.27,'Asia/Dubai'],['London',51.51,-0.13,'Europe/London'],['New York',40.71,-74.01,'America/New_York']];
+const EL={Me:[.38709927,.20563593,7.00497902,252.2503235,77.45779628,48.33076593,.00000037,.00001906,-.00594749,149472.67411175,.16047689,-.12534081],
+Ve:[.72333566,.00677672,3.39467605,181.9790995,131.60246718,76.67984255,.0000039,-.00004107,-.0007889,58517.81538729,.00268329,-.27769418],
+Ea:[1.00000261,.01671123,-.00001531,100.46457166,102.93768193,0,.00000562,-.00004392,-.01294668,35999.37244981,.32327364,0],
+Ma:[1.52371034,.0933941,1.84969142,-4.55343205,-23.94362959,49.55953891,.00001847,.00007882,-.00813131,19140.30268499,.44441088,-.29257343],
+Ju:[5.202887,.04838624,1.30439695,34.39644051,14.72847983,100.47390909,-.00011607,-.00013253,-.00183714,3034.74612775,.21252668,.20469106],
+Sa:[9.53667594,.05386179,2.48599187,49.95424423,92.59887831,113.66242448,-.0012506,-.00050991,.00193609,1222.49362201,-.41897216,-.28867794]};
+function hel(k,T){const e=EL[k],f=i=>e[i]+e[i+6]*T,a=f(0),ec=f(1),I=f(2)*R,w=f(4),O=f(5)*R;let M=N(f(3)-w);if(M>180)M-=360;M*=R;let E=M+ec*Math.sin(M);for(let i=0;i<9;i++)E-=(E-ec*Math.sin(E)-M)/(1-ec*Math.cos(E));
+const xp=a*(Math.cos(E)-ec),yp=a*Math.sqrt(1-ec*ec)*Math.sin(E),om=(w-f(5))*R,c=Math.cos,s=Math.sin;
+return[(c(om)*c(O)-s(om)*s(O)*c(I))*xp+(-s(om)*c(O)-c(om)*s(O)*c(I))*yp,(c(om)*s(O)+s(om)*c(O)*c(I))*xp+(-s(om)*s(O)+c(om)*c(O)*c(I))*yp]}
+const ay=T=>23.8571+1.396971*T+.0003086*T*T;
+function dTs(jd){const y=2000+(jd-2451545)/365.25,u=(y-1820)/100;let t;
+if(y<1900)return-20+32*u*u;
+if(y<1920){t=y-1900;return-2.79+1.494119*t-.0598939*t*t+.0061966*t**3-.000197*t**4}
+if(y<1941){t=y-1920;return 21.2+.84493*t-.0761*t*t+.0020936*t**3}
+if(y<1961){t=y-1950;return 29.07+.407*t-t*t/233+t**3/2547}
+if(y<1986){t=y-1975;return 45.45+1.067*t-t*t/260-t**3/718}
+if(y<2005){t=y-2000;return 63.86+.3345*t-.060374*t*t+.0017275*t**3+.000651814*t**4+.00002373599*t**5}
+if(y<2050){t=y-2000;return 62.92+.32217*t+.005589*t*t}
+return-20+32*u*u-(y<2150?.5628*(2150-y):0)}
+const MT=[[0,0,1,0,6288774],[2,0,-1,0,1274027],[2,0,0,0,658314],[0,0,2,0,213618],[0,1,0,0,-185116],[0,0,0,2,-114332],[2,0,-2,0,58793],[2,-1,-1,0,57066],[2,0,1,0,53322],[2,-1,0,0,45758],[0,1,-1,0,-40923],[1,0,0,0,-34720],[0,1,1,0,-30383],[2,0,0,-2,15327],[0,0,1,2,-12528],[0,0,1,-2,10980],[4,0,-1,0,10675],[0,0,3,0,10034],[4,0,-2,0,8548],[2,1,-1,0,-7888],[2,1,0,0,-6766],[1,0,-1,0,-5163],[1,1,0,0,4987],[2,-1,1,0,4036],[2,0,2,0,3994],[4,0,0,0,3861],[2,0,-3,0,3665],[0,1,-2,0,-2689],[2,0,-1,2,-2602],[2,-1,-2,0,2390],[1,0,1,0,-2348],[2,-2,0,0,2236],[0,1,2,0,-2120],[0,2,0,0,-2069],[2,-2,-1,0,2048],[2,0,1,-2,-1773],[2,0,0,2,-1595],[4,-1,-1,0,1215],[0,0,2,2,-1110],[3,0,-1,0,-892],[2,1,1,0,-810],[4,-1,-2,0,759],[0,2,-1,0,-713],[2,2,-1,0,-700],[2,1,-2,0,691],[2,-1,0,-2,596],[4,0,1,0,549],[0,0,4,0,537],[4,-1,0,0,520],[1,0,-2,0,-487],[2,1,0,-2,-399],[0,0,2,-2,-381],[1,1,1,0,351],[3,0,-2,0,-340],[4,0,-3,0,330],[2,-1,2,0,327],[0,2,1,0,-323],[1,1,-1,0,299],[2,0,3,0,294]];
+function moon(T){const t2=T*T,t3=t2*T,L=218.3164477+481267.88123421*T-.0015786*t2+t3/538841,D=(297.8501921+445267.1114034*T-.0018819*t2+t3/545868)*R,M=(357.5291092+35999.0502909*T-.0001536*t2)*R,P=(134.9633964+477198.8675055*T+.0087414*t2+t3/69699)*R,F=(93.272095+483202.0175233*T-.0036539*t2-t3/3526000)*R,E=1-.002516*T-.0000074*t2,s=Math.sin;
+let x=3958*s((119.75+131.849*T)*R)+1962*s(L*R-F)+318*s((53.09+479264.29*T)*R);
+MT.forEach(r=>{const k=Math.abs(r[1]);x+=r[4]*(k==1?E:k==2?E*E:1)*s(r[0]*D+r[1]*M+r[2]*P+r[3]*F)});
+return N(L+x/1e6-ay(T))}
+function pos(jd){const T=(jd+dTs(jd)/864e2-2451545)/36525,e=hel('Ea',T),g=k=>{const p=hel(k,T);return N(Math.atan2(p[1]-e[1],p[0]-e[0])/R-23.8571)},ra=N(125.0445479-1934.1362891*T-ay(T));
+return[N(Math.atan2(-e[1],-e[0])/R-23.8571-.00569/Math.hypot(e[0],e[1])),moon(T),g('Ma'),g('Me'),g('Ju'),g('Ve'),g('Sa'),ra,N(ra+180)]}
+function retro(jd){const a=pos(jd-.5),b=pos(jd+.5);return a.map((x,i)=>[2,3,4,5,6].includes(i)&&N(b[i]-x)>180)}
+function JD(y,m,d,h){if(m<3){y--;m+=12}const A=Math.floor(y/100),B=2-A+Math.floor(A/4);return Math.floor(365.25*(y+4716))+Math.floor(30.6001*(m+1))+d+B-1524.5+h/24}
+function asc(jd,lat,lon){const T=(jd-2451545)/36525,th=N(280.46061837+360.98564736629*(jd-2451545)+lon)*R,ep=(23.4392911-.0130042*T)*R;
+return N(Math.atan2(Math.cos(th),-(Math.sin(th)*Math.cos(ep)+Math.tan(lat*R)*Math.sin(ep)))/R-ay(T))}
+function V(L,n){const s=Math.floor(L/30),d=L%30,p=Math.floor(d*n/30),o=s%2==0,m=s%3;
+switch(n){case 1:return s;case 2:return o?(d<15?4:3):(d<15?3:4);case 3:return(s+4*p)%12;case 4:return(s+3*p)%12;case 7:return((o?s:s+6)+p)%12;case 9:return([s,s+8,s+4][m]+p)%12;case 10:return((o?s:s+8)+p)%12;case 12:return(s+p)%12;case 16:return([0,4,8][m]+p)%12;case 20:return([0,8,4][m]+p)%12;case 24:return((o?4:3)+p)%12;case 27:return([0,3,6,9][s%4]+p)%12;
+case 30:return o?(d<5?0:d<10?10:d<18?8:d<25?2:6):(d<5?1:d<12?5:d<20?11:d<25?9:7);case 40:return((o?0:6)+p)%12;case 45:return([0,4,8][m]+p)%12;case 60:return(s+p)%12}}
+const VN=[2,3,4,7,9,10,12,16,20,24,27,30,40,45,60];
+const CAT={daily:['Daily horoscope',[],[1,4,7,10]],general:['General',[9,10],[1,4,7,10]],love:['Love',[9,7],[5,7,11,12]],marriage:['Marriage',[9,2],[2,7,8,11,12]],career:['Career',[10,9],[2,6,10,11]],wealth:['Wealth',[2,9],[2,5,9,11]],health:['Health',[9,30],[1,6,8,12]],education:['Education',[24,9],[4,5,9]],children:['Children',[7,9],[2,5,9]]};
+const VNAME={2:'Hora',3:'Drekkana',4:'Chaturthamsa',7:'Saptamsa',9:'Navamsa',10:'Dashamsa',12:'Dwadashamsa',16:'Shodashamsa',20:'Vimshamsa',24:'Siddhamsa',27:'Bhamsa',30:'Trimshamsa',40:'Khavedamsa',45:'Akshavedamsa',60:'Shashtiamsa'};
+const dm=d=>Math.floor(d)+"\u00b0"+String(Math.floor(d%1*60)).padStart(2,"0")+"'";
+const nk=l=>NK[Math.floor(l/(360/27))]+" pada "+(Math.floor(l%(360/27)/(360/108))+1);
+let S,mode='D1',sty='n';
+$('city').add(new Option('— Select your city —',''));CITY.forEach((c,i)=>$('city').add(new Option(c[0],i)));
+$('city').onchange=()=>{const c=CITY[$('city').value];if(!c)return;$('lat').value=c[1];$('lon').value=c[2];$('tz').value=''};
+let ZN=null,ZP='';
+const er=m=>{$('err').textContent=m;$('err').hidden=!m};const rz=()=>{ZN=null;ZP='';$('pm').textContent=''};
+['lat','lon','tz'].forEach(i=>$(i).addEventListener('input',rz));['dt','tm','pq'].forEach(i=>$(i).addEventListener('input',()=>er('')));$('pq').addEventListener('input',()=>{rz();$('lat').value='';$('lon').value='';$('tz').value='';$('pm').style.color=''});$('city').addEventListener('change',rz);
+$('city').addEventListener('change',()=>{const c=CITY[$('city').value];if(!c)return;ZN=c[3];ZP=c[0];$('pm').innerHTML='<b style="color:#1b7a3a">&#10004; You selected: '+c[0]+'</b>';$('tzw').hidden=true});
+$('cityb').onclick=()=>{$('city').hidden=!$('city').hidden;if(!$('city').hidden)$('city').focus()};
+function zoff(z,y,m,d,h,mi){const f=new Intl.DateTimeFormat('en-US',{timeZone:z,hourCycle:'h23',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric'});
+const lo=t=>{const p=Object.fromEntries(f.formatToParts(new Date(t)).map(x=>[x.type,x.value]));return Date.UTC(+p.year,p.month-1,+p.day,+p.hour,+p.minute)};
+let g=Date.UTC(y,m-1,d,h,mi),o=lo(g)-g;g-=o;o=lo(g)-g;return o/36e5}
+$('pq').onkeydown=e=>{if(e.key=='Enter')$('ps').click()};
+const CCZ={in:'Asia/Kolkata',np:'Asia/Kathmandu',lk:'Asia/Colombo',bd:'Asia/Dhaka',pk:'Asia/Karachi',bt:'Asia/Thimphu',af:'Asia/Kabul',ae:'Asia/Dubai',sa:'Asia/Riyadh',qa:'Asia/Qatar',kw:'Asia/Kuwait',om:'Asia/Muscat',bh:'Asia/Bahrain',sg:'Asia/Singapore',my:'Asia/Kuala_Lumpur',th:'Asia/Bangkok',vn:'Asia/Ho_Chi_Minh',ph:'Asia/Manila',hk:'Asia/Hong_Kong',cn:'Asia/Shanghai',jp:'Asia/Tokyo',kr:'Asia/Seoul',gb:'Europe/London',ie:'Europe/Dublin',fr:'Europe/Paris',de:'Europe/Berlin',it:'Europe/Rome',es:'Europe/Madrid',nl:'Europe/Amsterdam',be:'Europe/Brussels',ch:'Europe/Zurich',at:'Europe/Vienna',se:'Europe/Stockholm',no:'Europe/Oslo',dk:'Europe/Copenhagen',fi:'Europe/Helsinki',pl:'Europe/Warsaw',gr:'Europe/Athens',tr:'Europe/Istanbul',il:'Asia/Jerusalem',nz:'Pacific/Auckland',za:'Africa/Johannesburg',ke:'Africa/Nairobi',ng:'Africa/Lagos',eg:'Africa/Cairo',mu:'Indian/Mauritius',fj:'Pacific/Fiji'};
+const TUL={m:'morning',a:'afternoon',e:'evening',n:'night',l:'late night / pre-dawn',x:'time completely unknown'};
+let AT=0;$('pq').addEventListener('input',()=>{clearTimeout(AT);const q=$('pq').value.trim();if(q.length>=3)AT=setTimeout(()=>$('ps').click(),1200)});
+$('tzs').onchange=()=>{ZN=$('tzs').value||null;er('');if(ZN){const[y,mo,d]=($('dt').value||'2000-01-01').split('-').map(Number),[h,mi]=($('tm').value||'12:00').split(':').map(Number);$('tz').value=zoff(ZN,y,mo,d,h,mi)}else $('tz').value=''};
+let LQ=0,SEQ=0;const esc=s=>String(s).replace(/[<>&"]/g,'');
+function ap(r){ZN=null;try{new Intl.DateTimeFormat('en',{timeZone:r.tz});ZN=r.tz}catch(e){}
+$('lat').value=(+r.lat).toFixed(4);$('lon').value=(+r.lon).toFixed(4);ZP=esc(r.full||r.name);$('tzw').hidden=!!ZN;if(!ZN){$('tzs').value='';$('tz').value=''}$('city').hidden=true;
+if(ZN){const[y,mo,d]=($('dt').value||'2000-01-01').split('-').map(Number),[h,mi]=($('tm').value||'12:00').split(':').map(Number);$('tz').value=zoff(ZN,y,mo,d,h,mi)}
+$('pi').innerHTML='<b style="color:#1b7a3a">&#10004; You selected: '+esc(r.name)+'</b><br>'+(+r.lat).toFixed(4)+', '+(+r.lon).toFixed(4)+(ZN?' | '+ZN:'')+' | <a href="https://www.openstreetmap.org/?mlat='+(+r.lat)+'&mlon='+(+r.lon)+'#map=11/'+(+r.lat)+'/'+(+r.lon)+'" target="_blank" rel="noopener">Check on map</a>'}
+$('ps').onclick=async()=>{const q=$('pq').value.trim(),m=$('pm');if(!q)return;m.textContent='Searching…';
+const p=q.split(','),rest=p.slice(1).join(' ').toLowerCase().split(/\s+/).filter(Boolean);let L=null;
+if(Date.now()-LQ<1100){setTimeout(()=>$('ps').click(),1150-(Date.now()-LQ));return}LQ=Date.now();const SQ=++SEQ;
+try{const j=await(await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&accept-language=en&q='+encodeURIComponent(q))).json();
+L=j.map(x=>{const a=x.address||{},sg={},nm=[String(x.display_name||'').split(',')[0].trim(),a.state_district||a.county,a.state,a.country].filter(Boolean).filter(s=>{s=String(s).trim();if(sg[s])return false;sg[s]=1;return true}).join(', ');return{name:nm||x.display_name,full:x.display_name,lat:+x.lat,lon:+x.lon,tz:(()=>{try{return window.tzlookup?window.tzlookup(+x.lat,+x.lon):null}catch(e){return null}})()||CCZ[String(a.country_code||'').toLowerCase()]||null}})}catch(e){}
+if(SQ!==SEQ)return;if(L&&!L.length){m.textContent='Place not found. Try typing just the city name (e.g. Jaipur) or check the spelling. You can also pick a city from the list below.';$('city').hidden=false;return}
+if(!L){m.textContent='Search is not working right now. Please pick your city from the list below, or try again after a while.';$('city').hidden=false;return}
+const sc=r=>rest.filter(w=>(r.full||r.name).toLowerCase().includes(w)).length;L.sort((a,b)=>sc(b)-sc(a));
+m.innerHTML='<div style="font-weight:600;margin-bottom:4px">Select your exact place from below:</div><select id="vk-pr">'+L.map((r,i)=>'<option value="'+i+'">'+esc(r.name)+'</option>').join('')+'</select><div id="vk-pi" class="vk-n"></div>';
+const pick=()=>ap(L[$('pr').value]);$('pr').onchange=pick;pick()};
+for(const k in CAT)$('cat').add(new Option(CAT[k][0],k));
+const tl=[['D1','D1 Lagna'],['Moon','Moon chart'],['Gochar','Transit (Gochar)'],['Chalit','Chalit']];
+tl.forEach(t=>{const b=document.createElement('button');b.textContent=t[1];b.className='vk-sec vk-auto';b.dataset.m=t[0];b.onclick=()=>{mode=t[0];render()};$('tabs').append(b)});
+$('vsel').add(new Option('Other D-charts…',''));VN.forEach(n=>$('vsel').add(new Option('D'+n,'D'+n)));
+$('vsel').onchange=()=>{if($('vsel').value){mode=$('vsel').value;render()}};
+$('sty').onclick=()=>{sty=sty=='n'?'s':'n';$('sty').textContent='Style: '+(sty=='n'?'North Indian':'South Indian');render()};
+$('go').onclick=()=>{const dt=$('dt').value,tm=$('tm').value;er('');if(!dt||!tm){er(window.vkDtErr?window.vkDtErr():'Please enter your date of birth and time of birth.');try{$(!dt?'dd':'th').focus();$(!dt?'dd':'th').scrollIntoView({block:'center'})}catch(e){}return}
+if(!$('lat').value||!$('lon').value){er('Please select your place of birth: type the city name and tap the correct name from the list that appears.');try{$('pq').focus();$('pq').scrollIntoView({block:'center'})}catch(e){}return}
+if($('tz').value===''&&!ZN){er('Please tell us which time zone your place of birth is in.');try{$('tzw').hidden=false;$('tzs').scrollIntoView({block:'center'});$('tzs').focus()}catch(e){}return}
+const[y,m,d]=dt.split('-').map(Number),[hh,mm]=tm.split(':').map(Number),lat=+$('lat').value,lon=+$('lon').value,tz=ZN?zoff(ZN,y,m,d,hh,mm):+$('tz').value;$('tz').value=tz;
+const jd=JD(y,m,d,hh+mm/60-tz),now=Date.now(),jn=now/864e5+2440587.5;
+const L=pos(jd);S={y,m,d,tm,lat,lon,tz,jd,glon:lon,lon:L,asc:asc(jd,lat,lon),rt:retro(jd),tr:pos(jn),trt:retro(jn),birth:Date.UTC(y,m-1,d,hh,mm)-tz*36e5,now,place:ZP||'Manual latitude/longitude'};S.av=avk();S.sr=sunrs();S.tu=$('tu').value;
+$('res').hidden=false;mode='D1';render();saveP();$('res').scrollIntoView()};
+function cd(m){const L=S.lon,A=S.asc,as=Math.floor(A/30),mk=(f,t,r)=>L.map((l,i)=>({n:i,s:f(l),d:t?l%30:null,r:r?r[i]:false}));
+if(m=='D1')return{a:as,p:mk(l=>Math.floor(l/30),1,S.rt)};if(m=='Moon')return{a:Math.floor(L[1]/30),p:mk(l=>Math.floor(l/30),1,S.rt)};
+if(m=='Gochar')return{a:as,p:S.tr.map((l,i)=>({n:i,s:Math.floor(l/30),d:l%30,r:S.trt[i]}))};
+if(m=='Chalit')return{a:as,p:mk(l=>(as+Math.floor(N(l-A+15)/30))%12,1,S.rt)};
+const n=+m.slice(1);return{a:V(A,n),p:mk(l=>V(l,n),0,S.rt)}}
+const hs=(c,p)=>(p.s-c.a+12)%12+1;
+function lines(c){return c.p.map(p=>({t:PN[p.n]+(p.r?'(R)':'')+(p.d!=null?' '+dm(p.d):''),s:p.s}))}
+function north(c){const Pc=[[200,75],[100,40],[40,100],[70,200],[40,300],[100,360],[200,325],[300,360],[360,300],[330,200],[360,100],[300,40]],
+Sc=[[200,190],[100,88],[88,100],[188,200],[88,300],[100,312],[200,212],[300,312],[312,300],[212,200],[312,100],[300,88]],ls=lines(c);
+let o='<svg viewBox="0 0 400 400" font-size="12" text-anchor="middle"><g fill="none" stroke="var(--ln)" stroke-width="2"><rect x="1" y="1" width="398" height="398"/><path d="M0 0L400 400M400 0L0 400M200 0L0 200L200 400L400 200Z"/></g>';
+for(let h=1;h<=12;h++){const s=(c.a+h-1)%12;o+=`<text class="vk-sn" x="${Sc[h-1][0]}" y="${Sc[h-1][1]+4}">${s+1}</text>`;
+const it=ls.filter(x=>(x.s-c.a+12)%12+1==h);it.forEach((x,i)=>{o+=`<text x="${Pc[h-1][0]}" y="${Pc[h-1][1]+i*15-(it.length-1)*7.5}">${x.t}</text>`})}
+return o+'</svg>'}
+function south(c){const G=[[1,0],[2,0],[3,0],[3,1],[3,2],[3,3],[2,3],[1,3],[0,3],[0,2],[0,1],[0,0]],ls=lines(c);
+let o='<svg viewBox="0 0 400 400" font-size="11" text-anchor="middle"><g fill="none" stroke="var(--ln)" stroke-width="2"><rect x="1" y="1" width="398" height="398"/><path d="M100 0V400M200 0V100M200 300V400M300 0V400M0 100H400M0 200H100M300 200H400M0 300H400"/></g>';
+for(let s=0;s<12;s++){const[x,y]=G[s];o+=`<text class="vk-sn" x="${x*100+12}" y="${y*100+14}">${s+1}</text>`;let k=0;if(s==c.a)o+=`<text x="${x*100+50}" y="${y*100+30}" style="font-weight:700">Asc</text>`,k=1;
+ls.filter(p=>p.s==s).forEach(p=>{o+=`<text x="${x*100+50}" y="${y*100+30+k++*15}">${p.t}</text>`})}
+return o+'</svg>'}
+function render(){const c=cd(mode);$('tuw2').hidden=!S.tu;document.querySelectorAll('#vk-tabs button').forEach(b=>{const on=b.dataset.m==mode;b.classList.toggle('vk-on',on);b.setAttribute('aria-pressed',on)});$('kf').innerHTML='<b>Your key details</b><br>Lagna (ascendant): '+SG[Math.floor(S.asc/30)]+' '+dm(S.asc%30)+(S.tu?' (approximate)':'')+'<br>Moon sign (Rashi): '+SG[Math.floor(S.lon[1]/30)]+'<br>Nakshatra: '+nk(S.lon[1])+'<br>Sun sign: '+SG[Math.floor(S.lon[0]/30)];
+$('ct').textContent={D1:'D1 – Lagna chart (Rashi)',Moon:'Moon chart (Chandra Lagna)',Gochar:'Transit (Gochar): today\'s planets, from the ascendant',Chalit:'Chalit (Bhava Chalit)'}[mode]||mode+(VNAME[+mode.slice(1)]?' ('+VNAME[+mode.slice(1)]+')':'')+' chart';
+$('chart').innerHTML=sty=='n'?north(c):south(c);
+let t='<tr><th>Planet<th>Sign<th>Degree<th>House'+(mode=='D1'?'<th>Nakshatra-Pada':'')+'</tr>';
+t+=`<tr><td>Ascendant<td>${SG[c.a]}<td>${mode=='D1'?dm(S.asc%30):''}<td>1${mode=='D1'?'<td>'+nk(S.asc):''}</tr>`;
+c.p.forEach(p=>t+=`<tr><td>${PF[p.n]}${p.r?' (R)':''}<td>${SG[mode=='Chalit'?Math.floor(S.lon[p.n]/30):p.s]}<td>${p.d!=null?dm(p.d):''}<td>${hs(c,p)}${mode=='D1'?'<td>'+nk(S.lon[p.n]):''}</tr>`);
+$('tb').innerHTML=t;$('sr').textContent='Sunrise '+S.sr[0]+', Sunset '+S.sr[1]+' (local time)';
+$('av').innerHTML='<tr><th>Planet'+[...Array(12)].map((_,i)=>'<th>'+(i+1)).join('')+'<th>Total</tr>'+S.av.B.map((r,i)=>`<tr><td>${PF[i]}`+r.map(v=>'<td>'+v).join('')+`<td>${sum(r)}</tr>`).join('')+'<tr><td><b>Sarvashtaka (SAV)</b>'+S.av.sav.map(v=>'<td><b>'+v+'</b>').join('')+`<td><b>${sum(S.av.sav)}</b></tr>`;build()}
+const AVT=[['1,2,4,7,8,9,10,11','3,6,10,11','1,2,4,7,8,9,10,11','3,5,6,9,10,11,12','5,6,9,11','6,7,12','1,2,4,7,8,9,10,11','3,4,6,10,11,12'],
+['3,6,7,8,10,11','1,3,6,7,10,11','2,3,5,6,9,10,11','1,3,4,5,7,8,10,11','1,4,7,8,10,11,12','3,4,5,7,9,10,11','3,5,6,11','3,6,10,11'],
+['3,5,6,10,11','3,6,11','1,2,4,7,8,10,11','3,5,6,11','6,10,11,12','6,8,11,12','1,4,7,8,9,10,11','1,3,6,10,11'],
+['5,6,9,11,12','2,4,6,8,10,11','1,2,4,7,8,9,10,11','1,3,5,6,9,10,11,12','6,8,11,12','1,2,3,4,5,8,9,11','1,2,4,7,8,9,10,11','1,2,4,6,8,10,11'],
+['1,2,3,4,7,8,9,10,11','2,5,7,9,11','1,2,4,7,8,10,11','1,2,4,5,6,9,10,11','1,2,3,4,7,8,10,11','2,5,6,9,10,11','3,5,6,12','1,2,4,5,6,7,9,10,11'],
+['8,11,12','1,2,3,4,5,8,9,11,12','3,4,6,9,11,12','3,5,6,9,11','5,8,9,10,11','1,2,3,4,5,8,9,10,11','3,4,5,8,9,10,11','1,2,3,4,5,8,9,11'],
+['1,2,4,7,8,10,11','3,6,11','3,5,6,10,11,12','6,8,9,10,11,12','5,6,11,12','6,11,12','3,5,6,11','1,3,4,6,10,11']];
+const sum=a=>a.reduce((x,y)=>x+y,0);
+function avk(){const as=Math.floor(S.asc/30),src=[...S.lon.slice(0,7).map(l=>Math.floor(l/30)),as],
+B=AVT.map(r=>{const b=Array(12).fill(0);r.forEach((h,k)=>h.split(',').forEach(x=>b[(src[k]+ +x-1)%12]++));return b.map((_,i)=>b[(as+i)%12])}),sav=B[0].map((_,i)=>B.reduce((a,r)=>a+r[i],0));
+return{B,sav,txt:B.map((r,i)=>PF[i]+' ('+sum(r)+'): '+r.join(' ')).join('\n')+'\nSarvashtakavarga SAV ('+sum(sav)+'): '+sav.join(' ')}}
+function sunrs(){const{y,m,d,lat,glon:lon,tz}=S,K=360.98564736629;
+const sd=t=>{const T=(t-2451545)/36525,l=(pos(t)[0]+ay(T))*R,ep=(23.4392911-.0130042*T)*R;return[Math.atan2(Math.cos(ep)*Math.sin(l),Math.cos(l))/R,Math.asin(Math.sin(ep)*Math.sin(l))]};
+const ha=t=>((280.46061837+K*(t-2451545)+lon-sd(t)[0]+540)%360+360)%360-180;
+let tr=JD(y,m,d,12-lon/15);for(let i=0;i<4;i++)tr-=ha(tr)/K;
+const f=sg=>{let t=tr;for(let i=0;i<4;i++){const dc=sd(t)[1],c=(Math.sin(-.833*R)-Math.sin(lat*R)*Math.sin(dc))/(Math.cos(lat*R)*Math.cos(dc));if(Math.abs(c)>1)return null;t=tr+sg*Math.acos(c)/R/360}return t};
+const fm=t=>{if(t==null)return'Not available';const h=((((t+.5)%1)*24+tz)%24+24)%24,H=Math.floor(h),M=Math.floor((h-H)*60);return String(H).padStart(2,'0')+':'+String(M).padStart(2,'0')+':'+String(Math.min(59,Math.round(((h-H)*60-M)*60))).padStart(2,'0')};
+return[fm(f(-1)),fm(f(1))]}
+function dasha(){const u=360/27,m=S.lon[1],k=Math.floor(m/u),fr=m%u/u,l0=k%9,Y=365.25*864e5,fd=t=>new Date(t).toISOString().slice(0,10);
+let t=S.birth-fr*DY[l0]*Y,cur,o='Vimshottari Mahadasha (the first period is the balance remaining at birth):\n';
+for(let i=0;i<9;i++){const l=(l0+i)%9,e=t+DY[l]*Y;o+=`- ${DL[l]}: ${fd(t)} to ${fd(e)}\n`;if(S.now>=t&&S.now<e)cur=[l,t,e];t=e}
+if(cur){const[l,a]=cur;let s=a,ca;o+=`\nCurrent Mahadasha: ${DL[l]}\nAntardashas within ${DL[l]} Mahadasha:\n`;
+for(let j=0;j<9;j++){const sl=(l+j)%9,len=DY[l]*DY[sl]/120*Y,e=s+len,on=S.now>=s&&S.now<e;o+=`- ${DL[sl]}: ${fd(s)} to ${fd(e)}${on?' <= CURRENT':''}\n`;if(on)ca=[sl,s,len];s=e}
+if(ca){let p=ca[1];for(let j=0;j<9;j++){const pl=(ca[0]+j)%9,len=ca[2]*DY[pl]/120,e=p+len;if(S.now>=p&&S.now<e){o+=`Current Pratyantar dasha: ${DL[pl]} (${fd(p)} to ${fd(e)})\n`;break}p=e}}}
+return o}
+function build(){if(!S)return;const cat=CAT[$('cat').value],A=S.asc,as=Math.floor(A/30),L=S.lon,fd=(q=>q.getFullYear()+'-'+String(q.getMonth()+1).padStart(2,'0')+'-'+String(q.getDate()).padStart(2,'0'))(new Date(S.now)),tech=$('ans').value=='tech';
+const df=(m)=>{const c=cd(m);return c.p.map(p=>`- ${PF[p.n]}${p.r?' (retrograde)':''}: ${SG[p.s]}${p.d!=null?' '+dm(p.d):''}, house ${hs(c,p)}`).join('\n')};
+const pre=/^\d/.test(S.sr[0])&&S.tm<S.sr[0].slice(0,5),dd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][(new Date(S.y,S.m-1,S.d).getDay()+(pre?6:0))%7],df2=N(L[1]-L[0]),ti=Math.floor(df2/12),kr=Math.floor(df2/6);
+const tn=ti==14?'Purnima':ti==29?'Amavasya':TT[ti%15],kn=kr==0?'Kimstughna':kr==57?'Shakuni':kr==58?'Chatushpada':kr==59?'Naga':KM[(kr-1)%7];
+const TS=[
+`# ROLE`,
+`You are an expert Vedic astrologer (Jyotish) trained in the Parashari tradition. Analyze the birth chart data below silently and use ONLY that data. Do not recalculate positions, do not assume or invent any placement that is not listed, and do not ask for more information.`,
+``,
+`# RESPONSE LANGUAGE (overrides every other language instruction)`,
+`Write your ENTIRE answer in simple, natural Hindi in Devanagari script, the way a caring friend would speak. Reply in Hindi even if the question is written in English or Hinglish. Use everyday Hindi words and avoid heavy, formal Sanskrit vocabulary.`,
+``,
+`# AUDIENCE AND STYLE`,
+`The reader knows nothing about astrology. Your answer must contain NO astrological terms: do not mention planets, houses, signs, nakshatras, dashas, yogas, transits, the chart, or astrology itself. Never explain how you reached your conclusion. Be warm, practical and honest. Avoid fear-based or alarming statements and do not make absolute predictions.`,
+``,
+`# ANSWER STRUCTURE`,
+`1. Direct answer: answer the question first in 1-2 sentences.`,
+`2. Explanation: in plain everyday language, describe how the situation is likely to unfold and what may come next.`,
+`3. Timing: give rough timing in calendar terms (for example "over the next 6-12 months"). Never mention dasha names or planetary periods.`,
+`4. Practical steps: 3-5 simple, actionable points on what to do and what to avoid.`,
+`5. Closing: one short, honest line saying this is guidance, not a guarantee.`,
+`Keep the answer short, personal and in small paragraphs.`
+].join('\n')+'\n\n';
+const TT2=[
+`# ROLE`,
+`You are an expert Vedic astrologer (Jyotish) trained in the Parashari tradition. Use ONLY the chart data below (sidereal zodiac, Lahiri ayanamsa, whole-sign houses, Vimshottari dasha). Do not recalculate positions, do not invent placements that are not listed, and do not ask for more information.`,
+``,
+`# RESPONSE LANGUAGE (overrides every other language instruction)`,
+`Write your ENTIRE answer in Hindi (Devanagari script), even if the question is written in English or Hinglish. Write astrological terms in Devanagari using their standard Hindi/Sanskrit names (for example: लग्न, भाव, राशि, नक्षत्र, महादशा, अंतर्दशा, गोचर), and keep all explanations in clear, simple Hindi.`,
+``,
+`# TASK`,
+`Give a detailed reading on the topic and question given below. Cover, as relevant:`,
+`1. The relevant houses, their lords, and the natural significators (karakas) for the topic.`,
+`2. The matching divisional (varga) charts and the Ashtakavarga strength of the relevant houses.`,
+`3. The current Mahadasha / Antardasha / Pratyantar dasha and the current transits (gochar), including transits from the natal Moon.`,
+`4. Likely time windows, with the reasoning behind them.`,
+`5. Practical remedies and guidance.`,
+`6. An honest statement of uncertainty and limitations.`,
+`Support every conclusion with specific placements from the data. Clearly separate strong indications from weak or mixed ones. Do not make absolute predictions and avoid fear-based statements.`
+].join('\n')+'\n\n';
+let o=tech?TT2:TS;
+o+=`# TOPIC AND QUESTION\nTopic: ${cat[0]}\nUser's question / context: ${$('q').value.trim()||'(none, give a general reading for this topic)'}\n\n# CHART DATA\n\n`;
+o+=`== BIRTH DETAILS ==\nName: ${$('nm').value||'-'}\n${$('gn').value?'Gender: '+(GN[$('gn').value]||$('gn').value)+'\n':''}Date and time of birth: ${S.y}-${String(S.m).padStart(2,'0')}-${String(S.d).padStart(2,'0')} ${S.tm} (UTC${S.tz>=0?'+':''}${S.tz}), ${S.place}, latitude ${S.lat}, longitude ${S.glon}${S.tu?'\nBirth time is APPROXIMATE ('+TUL[S.tu]+').\nWARNING: because the birth time is approximate, the accuracy of the ascendant, houses, Chalit, divisional charts and antardashas is reduced. Do not rely on them heavily. Base the reading mainly on the Moon sign, Moon nakshatra and Mahadasha for general trends, and state clearly in your answer that the birth time is approximate.':''}\nToday's date: ${fd}\n\n`;
+o+=`== PANCHANG ==\nWeekday (vara, changes at sunrise): ${dd}${pre?" (born before local sunrise, so the previous civil day\'s weekday applies)":""}\nTithi: ${ti<15?'Shukla':'Krishna'} ${tn}\nMoon nakshatra: ${nk(L[1])}\nYoga: ${YG[Math.floor(N(L[0]+L[1])/(360/27))]}\nKarana: ${kn}\nSunrise: ${S.sr[0]}, Sunset: ${S.sr[1]} (local time)\n\n`;
+o+=`== D1 (Rashi chart) ==\nAscendant (Lagna): ${SG[as]} ${dm(A%30)}, nakshatra ${nk(A)}\n`+L.map((l,i)=>`- ${PF[i]}${S.rt[i]?' (retrograde)':''}: ${SG[Math.floor(l/30)]} ${dm(l%30)}, ${nk(l)}, house ${(Math.floor(l/30)-as+12)%12+1}`).join('\n')+'\n\n';
+const ms=Math.floor(L[1]/30);o+=`== MOON CHART (Chandra Lagna) ==\nMoon sign: ${SG[ms]}. Houses of the planets counted from the Moon: `+L.map((l,i)=>`${PF[i]} house ${(Math.floor(l/30)-ms+12)%12+1}`).join(', ')+'\n\n';
+o+=`== KEY HOUSES FOR ${cat[0].toUpperCase()} (D1) ==\n`+cat[2].map(h=>{const s=(as+h-1)%12,lr=LORD[s],li=PF.indexOf(lr),ls=Math.floor(L[li]/30),oc=L.map((l,i)=>Math.floor(l/30)==s?PF[i]:'').filter(Boolean);return`- House ${h} ${SG[s]}: lord ${lr}, placed in ${SG[ls]} (house ${(ls-as+12)%12+1}); planets in it: ${oc.join(', ')||'none'}`}).join('\n')+'\n\n';
+cat[1].forEach(n=>{o+=`== D${n} (${VNAME[n]||'divisional'} chart, ${SG[V(A,n)]} ascendant) ==\n${df('D'+n)}\n\n`});
+o+=`== ASHTAKAVARGA (points in houses 1-12 counted from the ascendant; Bhinnashtakavarga BAV for Sun to Saturn, then Sarvashtakavarga SAV) ==\n${S.av.txt}\n\n== CHALIT (equal houses) ==\n${df('Chalit')}\n\n== TRANSITS (planets today, ${fd}; houses from the birth ascendant) ==\n${df('Gochar')}\nTransit houses from the natal Moon: ${S.tr.map((l,i)=>PF[i]+' house '+((Math.floor(l/30)-ms+12)%12+1)).join(', ')}\n\n== DASHA ==\n${dasha()}\nNote: Lahiri ayanamsa. Positions are computed (Moon, Sun and inner planets within about 1 arcminute; Jupiter and Saturn within a few arcminutes), so treat planets very close to a sign or nakshatra boundary with care. Rahu/Ketu are the mean nodes.`;
+o+=tech?`\n\nFINAL REMINDER: Write the entire answer in Hindi (Devanagari script), including the astrological terms.`:`\n\nFINAL REMINDER: Write the entire answer in simple Hindi (Devanagari script) and use no astrological terms.`;
+$('out').value=o}
+$('cat').onchange=build;$('ans').onchange=build;$('q').oninput=build;$('nm').oninput=build;
+$('cp').onclick=()=>{const t=$('out');t.focus();t.select();try{t.setSelectionRange(0,t.value.length)}catch(e){}(navigator.clipboard?navigator.clipboard.writeText(t.value):Promise.reject()).catch(()=>document.execCommand('copy'));$('cp').textContent='Copied ✓';setTimeout(()=>$('cp').textContent='Copy prompt',1800)};
+const PK='vk_profiles_v1',pl=()=>{try{return JSON.parse(localStorage.getItem(PK))||{}}catch(e){return{}}},pw=o=>{try{localStorage.setItem(PK,JSON.stringify(o))}catch(e){}};
+function pfRender(sel){const k=Object.keys(pl());$('pfw').hidden=!k.length;$('pf').innerHTML='';$('pf').add(new Option('+ New profile',''));
+k.forEach(n=>{const o=new Option(n,n);o.dataset.nt=1;$('pf').add(o)});$('pf').value=sel||'';$('pd').hidden=!sel}
+function saveP(){const o=pl(),k=$('nm').value.trim()||(S.place.split(',')[0]+' '+$('dt').value);
+o[k]={nm:$('nm').value,gn:$('gn').value,dt:$('dt').value,tm:$('tm').value,pq:$('pq').value,lat:$('lat').value,lon:$('lon').value,tz:$('tz').value,tu:$('tu').value,ZN,ZP};pw(o);pfRender(k)}
+$('pf').onchange=()=>{const k=$('pf').value,p=pl()[k]||{};$('nm').value=p.nm||'';$('gn').value=p.gn||'';$('dt').value=p.dt||'';$('tm').value=p.tm||'';$('pq').value=p.pq||'';$('lat').value=p.lat||'';$('lon').value=p.lon||'';$('tz').value=p.tz||'';$('tu').value=p.tu||'';$('tzw').hidden=true;
+ZN=p.ZN||null;ZP=p.ZP||'';$('pm').textContent=ZP?ZP+' ('+p.lat+', '+p.lon+')':'';$('pm').style.color='';$('pd').hidden=!k};
+$('pd').onclick=()=>{const o=pl();delete o[$('pf').value];pw(o);$('pf').value='';$('pf').onchange();pfRender('')};
+pfRender('');
+window.VKCORE={N:N,R:R,SG:SG,NK:NK,PF:PF,PN:PN,LORD:LORD,DL:DL,DY:DY,CITY:CITY,CCZ:CCZ,pos:pos,retro:retro,asc:asc,JD:JD,zoff:zoff,V:V,nk:nk,dm:dm,ay:ay,AVT:AVT};
+})();
+</script>
+
+<script>
+(function(){
+var g=function(i){return document.getElementById(i)};
+var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var TP={m:'09:00',a:'14:00',e:'18:00',n:'22:00',l:'03:00',x:'12:00'};
+function opt(s,v,t){var o=document.createElement('option');o.value=v;o.textContent=t;s.appendChild(o)}
+var dd=g('vk-dd'),dm=g('vk-dm'),th=g('vk-th'),tmn=g('vk-tmn');
+opt(dd,'','Day');for(var i=1;i<=31;i++)opt(dd,String(i),String(i));
+opt(dm,'','Month');MN.forEach(function(n,i){opt(dm,String(i+1),n)});
+opt(th,'','Hour');for(i=1;i<=12;i++)opt(th,String(i),String(i));
+opt(tmn,'','Minute');for(i=0;i<60;i++)opt(tmn,String(i),(i<10?'0':'')+i);
+function pad(n){return(n<10?'0':'')+n}
+function setVal(id,v){var el=g(id);if(el.value!==v){el.value=v;el.dispatchEvent(new Event('input'))}}
+function pushDate(){var d=dd.value,m=dm.value,y=g('vk-dy').value.replace(/\D/g,''),v='';
+if(d&&m&&y.length===4){var Y=+y,now=new Date();if(Y>=1900&&Y<=now.getFullYear()){var t=new Date(Y,m-1,+d);if(t.getFullYear()===Y&&t.getMonth()===m-1&&t.getDate()===+d&&t<=now)v=Y+'-'+pad(+m)+'-'+pad(+d)}}
+setVal('vk-dt',v)}
+function pushTime(){var v='';
+if(g('vk-tkn').checked){var k=g('vk-tup').value||'x';v=TP[k];setVal('vk-tu',k)}
+else{setVal('vk-tu','');var h=th.value,mi=tmn.value,ap=g('vk-tap').value;if(h&&mi!==''&&ap){v=pad((+h%12)+(ap==='PM'?12:0))+':'+pad(+mi)}}
+setVal('vk-tm',v)}
+function view(){var u=g('vk-tkn').checked;g('vk-tuw').hidden=!u;g('vk-tbox').hidden=u}
+[dd,dm].forEach(function(e){e.addEventListener('change',pushDate)});
+g('vk-dy').addEventListener('input',function(){this.value=this.value.replace(/\D/g,'').slice(0,4);pushDate()});
+[th,tmn,g('vk-tap'),g('vk-tup')].forEach(function(e){e.addEventListener('change',pushTime)});
+g('vk-tkn').addEventListener('change',function(){view();pushTime()});
+function fromHidden(){var dv=g('vk-dt').value,tv=g('vk-tm').value,tu=g('vk-tu').value;
+if(/^\d{4}-\d{2}-\d{2}$/.test(dv)){var p=dv.split('-');g('vk-dy').value=p[0];dm.value=String(+p[1]);dd.value=String(+p[2])}else{g('vk-dy').value='';dm.value='';dd.value=''}
+g('vk-tkn').checked=!!tu;if(tu)g('vk-tup').value=tu;
+if(!tu&&/^\d{2}:\d{2}$/.test(tv)){var q=tv.split(':'),H=+q[0];g('vk-tap').value=H>=12?'PM':'AM';th.value=String(H%12===0?12:H%12);tmn.value=String(+q[1])}else if(!tu){th.value='';tmn.value='';g('vk-tap').value=''}
+view()}
+['vk-pf'].forEach(function(id){var el=g(id);if(el)el.addEventListener('change',function(){setTimeout(fromHidden,0)})});
+var pd=g('vk-pd');if(pd)pd.addEventListener('click',function(){setTimeout(fromHidden,0)});
+window.vkDtErr=function(){var d=dd.value,m=dm.value,y=g('vk-dy').value.replace(/\D/g,'');
+if(!d||!m||!y)return'Please choose your full date of birth: day, month and year (4 digits, e.g. 1995).';
+if(!g('vk-dt').value)return'This date does not look right. Please check the day, month and year again.';
+return'Please choose your time of birth: hour, minute and AM/PM. If you do not know the time, tick "I do not know my exact birth time".'};
+view();
+})();
+</script>
+<script>
+/* ============ AD SETTINGS - edit only this part ============
+   1) client : your AdSense publisher ID, e.g. 'ca-pub-1234567890123456'
+   2) slots  : the ad unit ID (data-ad-slot number) for each place.
+               top    = below the notice, above the tool (seen by every visitor)
+               mid    = after the prompt is generated, between the result and the chart
+               bottom = at the very end, after the chart tables
+   Leave a value '' to keep that place switched off. With everything empty, no ads load. */
+var VK_ADS={
+  client:'ca-pub-9957701684897017',
+  slots:{top:'',mid:'',bottom:''}
+};
+/* ============ END AD SETTINGS ============ */
+(function(){
+  if(!/^ca-pub-\d+$/.test(VK_ADS.client))return;
+  var s=document.createElement('script');s.async=true;s.crossOrigin='anonymous';
+  s.src='https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client='+VK_ADS.client;
+  document.head.appendChild(s);
+  function show(){
+    document.querySelectorAll('.vk-ad[data-slot]').forEach(function(w){
+      var id=VK_ADS.slots[w.getAttribute('data-slot')];
+      if(w.getAttribute('data-done')||!/^\d+$/.test(id||''))return;
+      w.hidden=false;
+      if(!w.offsetParent){w.hidden=true;return}
+      w.setAttribute('data-done','1');
+      w.innerHTML='<span class="vk-adl">Advertisement</span><ins class="adsbygoogle" data-ad-client="'+VK_ADS.client+'" data-ad-slot="'+id+'" data-ad-format="auto" data-full-width-responsive="true"></ins>';
+      try{(window.adsbygoogle=window.adsbygoogle||[]).push({})}catch(e){}
+    });
+  }
+  show();
+  var r=document.getElementById('vk-res');
+  if(r&&window.MutationObserver)new MutationObserver(show).observe(r,{attributes:true,attributeFilter:['hidden']});
+})();
+</script>
+<script>
+(function(){
+var g=function(i){return document.getElementById(i)};
+function box(ok){
+g('vk-rt').textContent=ok?'Your prompt has been copied.':'Tap once more to copy the prompt';
+var p=g('vk-rp');p.textContent=ok?'':'Your browser did not allow automatic copying. Tap "Copy again".';p.hidden=!!ok;
+g('vk-ca').hidden=!!ok;g('vk-ready').hidden=false}
+function copyNow(cb){var t=g('vk-out'),v=t.value;
+function fb(){var r=false;try{t.focus();t.select();try{t.setSelectionRange(0,v.length)}catch(e){}r=document.execCommand('copy')}catch(e){}cb(r)}
+if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(function(){cb(true)},fb)}else fb()}
+g('vk-go').addEventListener('click',function(){
+if(g('vk-res').hidden||!g('vk-out').value)return;
+g('vk-ready').hidden=true;
+copyNow(function(ok){box(ok)})});
+g('vk-cp').addEventListener('click',function(){box(true)});
+g('vk-ca').addEventListener('click',function(){copyNow(function(ok){box(ok)})});
+g('vk-rx').addEventListener('click',function(){g('vk-ready').hidden=true});
+document.querySelectorAll('#vk a.vk-ai').forEach(function(a){a.addEventListener('click',function(){copyNow(function(ok){box(ok)})})});
+document.querySelectorAll('#vk label:not([for])').forEach(function(l){var n=l.nextElementSibling;if(n&&n.id&&/^(INPUT|SELECT|TEXTAREA)$/.test(n.tagName))l.htmlFor=n.id});
+})();
+</script>
+<script>
+/* ===== PART 1 : Kundli Match shell, birth forms, calculation ===== */
+(function(){
+var C=window.VKCORE;if(!C)return;
+var $=function(i){return document.getElementById(i)},pad=function(n){return(n<10?'0':'')+n},esc=function(s){return String(s).replace(/[<>&"]/g,'')};
+var MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var OFF=[-11,-10,-9,-8,-7,-6,-5,-4,-3,0,1,2,3,3.5,4,4.5,5,5.5,5.75,6,6.5,7,8,9,9.5,10,11,12];
+var offL=function(o){var a=Math.abs(o),h=Math.floor(a);return'UTC'+(o<0?'-':'+')+h+':'+pad(Math.round((a-h)*60))};
+var ST={a:{},b:{}},H=window.VKM_HOOKS=window.VKM_HOOKS||[];window.VKM_ST=ST;window.VKM_PLACE=function(p,r){setPlace(p,r)};
+var q=function(p,k){return $('vk-'+p+'-'+k)};
+function form(p,t){return'<div class="vk-card"><h3 style="margin-top:0">'+t+'</h3>'
++'<label for="vk-'+p+'-nm">Name (optional)</label><input id="vk-'+p+'-nm" placeholder="Name" autocomplete="off">'
++'<label for="vk-'+p+'-gn">Gender (optional)</label><select id="vk-'+p+'-gn"><option value="">Prefer not to say</option><option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option></select>'
++'<label>Date of birth<span style="color:#c4560a" aria-hidden="true"> *</span></label><div class="vk-r3"><select id="vk-'+p+'-dd" aria-label="Birth day"></select><select id="vk-'+p+'-dm" aria-label="Birth month"></select><input id="vk-'+p+'-dy" inputmode="numeric" maxlength="4" placeholder="Year, e.g. 1995" autocomplete="off" aria-label="Birth year"></div>'
++'<div id="vk-'+p+'-tb"><label>Time of birth<span style="color:#c4560a" aria-hidden="true"> *</span></label><div class="vk-r3"><select id="vk-'+p+'-th" aria-label="Hour"></select><select id="vk-'+p+'-tn" aria-label="Minute"></select><select id="vk-'+p+'-ta" aria-label="AM or PM"><option value="">AM / PM</option><option value="AM">AM (morning)</option><option value="PM">PM (afternoon/night)</option></select></div></div>'
++'<label class="vk-chk"><input type="checkbox" id="vk-'+p+'-tk"><span>I do not know the exact birth time</span></label>'
++'<label for="vk-'+p+'-pq">Place of birth<span style="color:#c4560a" aria-hidden="true"> *</span></label><div class="vk-r" style="grid-template-columns:1fr auto"><input id="vk-'+p+'-pq" placeholder="City, state, country, e.g. Jaipur, Rajasthan, India"><button type="button" id="vk-'+p+'-ps" class="vk-auto">Search</button></div>'
++'<div class="vk-n" id="vk-'+p+'-pm"></div><div class="vk-n" id="vk-'+p+'-pi"></div>'
++'<select id="vk-'+p+'-cs" aria-label="Major cities"></select>'
++'<div id="vk-'+p+'-zw" hidden><label for="vk-'+p+'-zs">Time zone of birth place<span style="color:#c4560a" aria-hidden="true"> *</span></label><select id="vk-'+p+'-zs"></select></div></div>'}
+var box=$('vk-match');
+box.innerHTML='<p class="vk-n" style="margin:6px 0 0">Enter birth details of both partners to check kundli compatibility. Dates and times stay in your browser; only the place name is sent to OpenStreetMap to find coordinates.</p>'
++form('a','Partner 1 (You)')+form('b','Partner 2')
++'<div class="vk-n" id="vk-m-err" role="alert" style="color:#b3261e;font-weight:600" hidden></div><button type="button" id="vk-m-go">Calculate both kundlis</button><div id="vk-mres" hidden></div>';
+function opt(s,v,t){s.add(new Option(t,v))}
+function setPlace(p,r){var tz=null;try{if(r.tz){new Intl.DateTimeFormat('en',{timeZone:r.tz});tz=r.tz}}catch(e){}
+ST[p]={lat:+r.lat,lon:+r.lon,tz:tz,place:esc(r.name)};q(p,'zw').hidden=!!tz;
+q(p,'pi').innerHTML='<b style="color:#1b7a3a">&#10004; Selected: '+ST[p].place+'</b> ('+(+r.lat).toFixed(2)+', '+(+r.lon).toFixed(2)+(tz?' | '+tz:'')+')'}
+function search(p){var s=q(p,'pq').value.trim(),m=q(p,'pm');if(!s)return;m.textContent='Searching...';q(p,'pi').textContent='';ST[p]={};
+fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&accept-language=en&q='+encodeURIComponent(s)).then(function(r){return r.json()}).then(function(j){
+if(!j.length){m.textContent='Place not found. Try only the city name, or pick a major city below.';return}
+var L=j.map(function(x){var a=x.address||{},tz=null,nm=[String(x.display_name||'').split(',')[0].trim(),a.state,a.country].filter(Boolean).join(', ');try{tz=window.tzlookup?window.tzlookup(+x.lat,+x.lon):null}catch(e){}
+return{name:nm,lat:+x.lat,lon:+x.lon,tz:tz||C.CCZ[String(a.country_code||'').toLowerCase()]||null}});
+m.innerHTML='<div style="font-weight:600;margin-bottom:4px">Select the exact place:</div><select id="vk-'+p+'-pr">'+L.map(function(r,i){return'<option value="'+i+'">'+esc(r.name)+'</option>'}).join('')+'</select>';
+var sel=q(p,'pr'),pick=function(){setPlace(p,L[sel.value])};sel.onchange=pick;pick()
+}).catch(function(){m.textContent='Search is not working right now. Please pick a major city below, or try again later.'})}
+['a','b'].forEach(function(p){var i,dd=q(p,'dd'),dm=q(p,'dm'),th=q(p,'th'),tn=q(p,'tn'),zs=q(p,'zs'),cs=q(p,'cs');
+opt(dd,'','Day');for(i=1;i<=31;i++)opt(dd,i,i);opt(dm,'','Month');MN.forEach(function(n,k){opt(dm,k+1,n)});
+opt(th,'','Hour');for(i=1;i<=12;i++)opt(th,i,i);opt(tn,'','Minute');for(i=0;i<60;i++)opt(tn,i,pad(i));
+opt(zs,'','— Select —');OFF.forEach(function(o){opt(zs,o,offL(o))});
+opt(cs,'','Or pick a major city');C.CITY.forEach(function(c,k){opt(cs,k,c[0])});
+q(p,'dy').oninput=function(){this.value=this.value.replace(/\D/g,'').slice(0,4)};
+q(p,'tk').onchange=function(){q(p,'tb').hidden=this.checked};
+q(p,'ps').onclick=function(){search(p)};
+q(p,'pq').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();search(p)}};
+cs.onchange=function(){var c=C.CITY[cs.value];if(!c)return;q(p,'pm').textContent='';setPlace(p,{name:c[0],lat:c[1],lon:c[2],tz:c[3]})}});
+function read(p,t){var e=function(m){return{err:t+': '+m}},d=+q(p,'dd').value,m=+q(p,'dm').value,ys=q(p,'dy').value,y=+ys,now=new Date();
+if(!d||!m||ys.length!==4)return e('please choose the full date of birth (day, month and a 4-digit year).');
+var dt=new Date(y,m-1,d);if(y<1900||dt.getFullYear()!==y||dt.getMonth()!==m-1||dt.getDate()!==d||dt>now)return e('this date of birth does not look right.');
+var unk=q(p,'tk').checked,hh=12,mm=0;
+if(!unk){var h=q(p,'th').value,mi=q(p,'tn').value,ap=q(p,'ta').value;if(!h||mi===''||!ap)return e('please choose hour, minute and AM/PM, or tick "I do not know the exact birth time".');hh=(+h%12)+(ap==='PM'?12:0);mm=+mi}
+var s=ST[p];if(s.lat==null||isNaN(s.lat))return e('please search and select the place of birth.');
+var tz;if(s.tz)tz=C.zoff(s.tz,y,m,d,hh,mm);else{var z=q(p,'zs').value;if(z==='')return e('please select the time zone of the birth place.');tz=+z}
+var jd=C.JD(y,m,d,hh+mm/60-tz);
+return{nm:q(p,'nm').value.trim(),gn:q(p,'gn').value,y:y,m:m,d:d,tm:pad(hh)+':'+pad(mm),unk:unk,lat:s.lat,lon:s.lon,tz:tz,place:s.place,jd:jd,L:C.pos(jd),A:C.asc(jd,s.lat,s.lon),rt:C.retro(jd),birth:Date.UTC(y,m-1,d,hh,mm)-tz*36e5}}
+function card(P,t){var L=P.L,sg=C.SG,rows=[['Moon sign (Rashi)',sg[Math.floor(L[1]/30)]],['Nakshatra (Moon)',C.nk(L[1])],['Sun sign',sg[Math.floor(L[0]/30)]],['Ascendant (Lagna)',P.unk?'Not reliable (time unknown)':sg[Math.floor(P.A/30)]]];
+return'<div class="vk-card"><b>'+t+': '+esc(P.nm||'-')+'</b><div class="vk-n">Born '+P.y+'-'+pad(P.m)+'-'+pad(P.d)+(P.unk?' (time unknown)':' '+P.tm)+', '+P.place+'</div><div class="vk-w"><table>'+rows.map(function(r){return'<tr><th>'+r[0]+'<td>'+r[1]+'</tr>'}).join('')+'</table></div></div>'}
+$('vk-m-go').onclick=function(){var er=$('vk-m-err');er.hidden=true;
+var A=read('a','Partner 1'),B=read('b','Partner 2'),bad=A.err||B.err;
+if(bad){er.textContent=bad;er.hidden=false;return}
+var M=window.VKMATCH={part:1,A:A,B:B},r=$('vk-mres');r.hidden=false;
+r.innerHTML='<h3>Birth summary</h3>'+card(A,'Partner 1')+card(B,'Partner 2')
++((A.unk||B.unk)?'<div class="vk-n" style="color:#b3261e;font-weight:600">&#9888; Birth time is approximate for at least one partner, so ascendant based results will not be reliable. Moon based results are more dependable.</div>':'')
++'<div id="vk-m-hooks"></div>';
+H.forEach(function(f){try{f(M,$('vk-m-hooks'))}catch(x){console.error(x)}});
+r.scrollIntoView({behavior:'smooth',block:'start'})};
+var vk=$('vk'),bar=$('vk-mode'),title=vk.querySelector('.vk-title'),T0=title.textContent;
+function setMode(m){[].forEach.call(vk.children,function(c){if(c.classList.contains('vk-top')||c===bar)return;c.classList.toggle('vk-hide',m==='match'?c!==box:c===box)});
+[].forEach.call(bar.children,function(b){var on=b.dataset.m===m;b.classList.toggle('vk-on',on);b.setAttribute('aria-pressed',on)});
+title.textContent=m==='match'?'Kundli Match (Couple)':T0}
+[].forEach.call(bar.children,function(b){b.onclick=function(){setMode(b.dataset.m)}});
+setMode(location.hash==='#match'?'match':'single');
+})();
+</script>
+<script>
+/* ===== PART 2 : Ashtakoota Guna Milan (36 points, Moon based) ===== */
+(function(){
+var C=window.VKCORE;if(!C)return;
+var $=function(i){return document.getElementById(i)},esc=function(s){return String(s).replace(/[<>&"]/g,'')};
+var NU=360/27;
+var fmt=function(x){return x%1?x.toFixed(1):String(x)};
+/* Varna: rank per sign (0 Shudra, 1 Vaishya, 2 Kshatriya, 3 Brahmin) */
+var VN=['Shudra','Vaishya','Kshatriya','Brahmin'],VR=[2,1,0,3,2,1,0,3,2,1,0,3];
+/* Vashya: 0 Chatushpada, 1 Nara, 2 Jalachara, 3 Vanachara, 4 Keeta. Matrix rows = bride group, columns = groom group */
+var VAN=['Chatushpada','Nara','Jalachara','Vanachara','Keeta'];
+var VM=[[2,1,1,0,1],[1,2,.5,0,1],[1,.5,2,1,1],[0,0,1,2,0],[1,0,1,0,2]];
+function vg(L){var s=Math.floor(L/30),d=L%30;if(s==8)return d<15?1:0;if(s==9)return d<15?0:2;return[0,0,1,2,3,1,1,4,0,0,1,2][s]}
+/* Tara */
+var TN=['','Janma','Sampat','Vipat','Kshema','Pratyak','Sadhana','Naidhana (Vadha)','Mitra','Parama Mitra'];
+function tara(a,b){var c=((a-b+27)%27)+1,r=c%9||9;return{c:c,r:r,n:TN[r],ok:!(r==3||r==5||r==7)}}
+/* Yoni: animal index per nakshatra and 14x14 matrix */
+var YA=['Horse','Elephant','Sheep','Serpent','Dog','Cat','Rat','Cow','Buffalo','Tiger','Deer','Monkey','Mongoose','Lion'];
+var YO=[0,1,2,3,3,4,5,2,5,6,6,7,8,9,8,9,10,10,4,11,12,11,13,0,13,7,1];
+var YM=[[4,2,2,3,2,2,2,1,0,1,3,3,2,1],[2,4,3,3,2,2,2,2,3,1,2,3,2,0],[2,3,4,2,1,2,1,3,3,1,2,0,3,1],[3,3,2,4,2,1,1,1,1,2,2,2,0,2],[2,2,1,2,4,2,1,2,2,1,0,2,1,1],[2,2,2,1,2,4,0,2,2,1,3,3,2,1],[2,2,1,1,1,0,4,2,2,2,2,2,1,2],[1,2,3,1,2,2,2,4,3,0,3,2,2,1],[0,3,3,1,2,2,2,3,4,1,2,2,2,1],[1,1,1,2,1,1,2,0,1,4,1,1,2,1],[3,2,2,2,0,3,2,3,2,1,4,2,2,1],[3,3,0,2,2,3,2,2,2,1,2,4,3,2],[2,2,3,0,1,2,1,2,2,2,2,3,4,2],[1,0,1,2,1,1,2,1,1,1,1,2,2,4]];
+/* Graha Maitri: natural friendship of the Moon sign lords */
+var FR={Sun:{F:['Moon','Mars','Jupiter'],E:['Venus','Saturn']},Moon:{F:['Sun','Mercury'],E:[]},Mars:{F:['Sun','Moon','Jupiter'],E:['Mercury']},Mercury:{F:['Sun','Venus'],E:['Moon']},Jupiter:{F:['Sun','Moon','Mars'],E:['Mercury','Venus']},Venus:{F:['Mercury','Saturn'],E:['Sun','Moon']},Saturn:{F:['Mercury','Venus'],E:['Sun','Moon','Mars']}};
+var RN={F:'Friend',N:'Neutral',E:'Enemy'};
+function rel(a,b){var t=FR[a];return t.F.indexOf(b)>-1?'F':t.E.indexOf(b)>-1?'E':'N'}
+function maitri(la,lb){if(la==lb)return{s:5,x:'Same lord'};var x=rel(la,lb),y=rel(lb,la),k=[x,y].sort().join('');
+var s={FF:5,FN:4,NN:3,EF:1,EN:.5,EE:0}[k];return{s:s,x:RN[x]+' / '+RN[y]}}
+/* Gana: 0 Deva, 1 Manushya, 2 Rakshasa. Matrix rows = groom, columns = bride */
+var GNN=['Deva','Manushya','Rakshasa'];
+var GA=[0,1,2,1,0,1,0,0,2,2,1,1,0,2,0,2,0,2,2,1,1,0,2,2,1,1,0];
+var GM=[[6,6,0],[5,6,0],[1,0,6]];
+/* Nadi */
+var NDN=['Adi','Madhya','Antya'],ND=function(n){return[0,1,2,2,1,0][n%6]};
+var BKN={2:'Dwi-Dwadash (2/12)',12:'Dwi-Dwadash (2/12)',5:'Nava-Pancham (5/9)',9:'Nava-Pancham (5/9)',6:'Shadashtak (6/8)',8:'Shadashtak (6/8)'};
+var MEAN={varna:'Ego, work and spiritual compatibility',vashya:'Mutual attraction and influence',tara:'Birth star harmony, health and well-being',yoni:'Physical and intimate compatibility',maitri:'Mental wavelength and friendship',gana:'Temperament and nature',bhakoot:'Love, family welfare and prosperity',nadi:'Health, genes and children'};
+/* Core: g = groom Moon longitude, b = bride Moon longitude (sidereal degrees) */
+function calc(g,b){var gs=Math.floor(g/30),bs=Math.floor(b/30),gn=Math.floor(g/NU),bn=Math.floor(b/NU),R=[],det={};
+var gv=VR[gs],bv=VR[bs],sv=gv>=bv?1:0;
+R.push({k:'varna',name:'Varna',max:1,got:sv,detail:'Groom: '+VN[gv]+', Bride: '+VN[bv]});
+var gg=vg(g),bg=vg(b),sw=VM[bg][gg];
+R.push({k:'vashya',name:'Vashya',max:2,got:sw,detail:'Groom: '+VAN[gg]+', Bride: '+VAN[bg]});
+var t1=tara(gn,bn),t2=tara(bn,gn),st=(t1.ok?1.5:0)+(t2.ok?1.5:0);
+R.push({k:'tara',name:'Tara',max:3,got:st,detail:'Bride to groom star: '+t1.n+(t1.ok?'':' (unfavourable)')+'. Groom to bride star: '+t2.n+(t2.ok?'':' (unfavourable)')});
+var ya=YO[gn],yb=YO[bn],sy=YM[ya][yb];
+R.push({k:'yoni',name:'Yoni',max:4,got:sy,detail:'Groom: '+YA[ya]+', Bride: '+YA[yb]+(sy==0?' (natural enemies)':'')});
+var lg=C.LORD[gs],lb=C.LORD[bs],mt=maitri(lg,lb);
+R.push({k:'maitri',name:'Graha Maitri',max:5,got:mt.s,detail:'Moon sign lords: Groom '+lg+', Bride '+lb+' ('+mt.x+')'});
+var ga=GA[gn],ba=GA[bn],sg=GM[ga][ba];
+R.push({k:'gana',name:'Gana',max:6,got:sg,detail:'Groom: '+GNN[ga]+', Bride: '+GNN[ba]});
+var d=((gs-bs+12)%12)+1,bkBad=!!BKN[d],sb=bkBad?0:7;
+R.push({k:'bhakoot',name:'Bhakoot',max:7,got:sb,detail:'Groom sign is '+d+(d==1?'st':d==2?'nd':d==3?'rd':'th')+' from bride sign'+(bkBad?': '+BKN[d]+' dosha':': favourable')});
+var na=ND(gn),nb=ND(bn),ndBad=na==nb,sn=ndBad?0:8;
+R.push({k:'nadi',name:'Nadi',max:8,got:sn,detail:'Groom: '+NDN[na]+', Bride: '+NDN[nb]+(ndBad?': same Nadi dosha':'')});
+var tot=0;R.forEach(function(r){r.meaning=MEAN[r.k];tot+=r.got});
+var v=tot>=33?{key:'excellent',label:'Excellent match',txt:'Very high compatibility on the Guna Milan scale.'}:tot>=25?{key:'good',label:'Good match',txt:'Good compatibility. Most areas support the relationship.'}:tot>=18?{key:'average',label:'Average match',txt:'Acceptable (passes the minimum of 18), but a few areas need care and understanding.'}:{key:'low',label:'Low match',txt:'Below the minimum of 18. Guna Milan alone shows weak compatibility, so check doshas and the rest of the charts before concluding.'};
+return{rows:R,total:tot,max:36,pass:18,verdict:v,det:{groomSign:gs,brideSign:bs,groomNak:gn,brideNak:bn,groomYoni:YA[ya],brideYoni:YA[yb],groomGana:GNN[ga],brideGana:GNN[ba],groomNadi:NDN[na],brideNadi:NDN[nb],groomVarna:VN[gv],brideVarna:VN[bv],bhakootDist:d,bhakootDosha:bkBad,bhakootType:bkBad?BKN[d]:'',nadiDosha:ndBad,ganaScore:sg,yoniEnemy:sy==0,maitriScore:mt.s}}}
+window.VKM_KOOTA={calc:calc,tables:{YO:YO,YM:YM,GA:GA,VM:VM,FR:FR}};
+/* Does the Moon change nakshatra during the day? (matters when birth time is unknown) */
+function drift(P){if(!P.unk)return'';var a=C.pos(P.jd-.5)[1],b=C.pos(P.jd+.5)[1],sa=Math.floor(a/30),sb=Math.floor(b/30),na=Math.floor(a/NU),nb=Math.floor(b/NU);
+if(sa!=sb)return'the Moon changes sign ('+C.SG[sa]+' to '+C.SG[sb]+') that day, so even the Moon sign is uncertain';
+if(na!=nb)return'the Moon changes nakshatra ('+C.NK[na]+' to '+C.NK[nb]+') that day, so Tara, Yoni, Gana and Nadi may differ';return''}
+function who(P,def){return esc(P.nm||def)}
+function moonTxt(P){return C.SG[Math.floor(P.L[1]/30)]+', '+C.nk(P.L[1])}
+function render(M,el){var A=M.A,B=M.B,flip=false,note;
+if(A.gn==='Female'&&B.gn==='Male'){flip=true;note='Partner 2 is male and Partner 1 is female, so Partner 2 is treated as the groom side and Partner 1 as the bride side.'}
+else if(A.gn==='Male'&&B.gn==='Female')note='Partner 1 (male) is treated as the groom side and Partner 2 (female) as the bride side.';
+else note='Genders are not set as male and female, so the entered order is used: Partner 1 as groom side, Partner 2 as bride side. Scores can change slightly if the order is reversed.';
+var G=flip?B:A,Br=flip?A:B,K=calc(G.L[1],Br.L[1]);K.flip=flip;K.note=note;K.groom=flip?'b':'a';
+M.K=K;M.part=2;
+var old=$('vk-m-koota');if(old)old.remove();
+var pct=Math.round(K.total/36*100),col={excellent:'#1b7a3a',good:'#3d8b2f',average:'#b86e00',low:'#b3261e'}[K.verdict.key];
+var rows=K.rows.map(function(r){var c=r.got==r.max?'#1b7a3a':r.got==0?'#b3261e':'inherit';
+return'<tr><td style="vertical-align:top"><b>'+r.name+'</b><td style="vertical-align:top;color:'+c+';font-weight:700">'+fmt(r.got)+'<td style="vertical-align:top">'+r.max+'<td style="white-space:normal;min-width:190px">'+r.meaning+'<div class="vk-n" style="margin:2px 0 0">'+esc(r.detail)+'</div></tr>'}).join('');
+var warn=[[A,'Partner 1'],[B,'Partner 2']].map(function(x){var w=drift(x[0]);return w?'<div class="vk-n" style="color:#b3261e;font-weight:600">&#9888; '+x[1]+': birth time unknown, '+w+'.</div>':''}).join('');
+var h='<div id="vk-m-koota"><h3>Ashtakoota Guna Milan (36 points)</h3><div class="vk-card">'
++'<div class="vk-n" style="margin-top:0">Groom side: <b>'+who(G,flip?'Partner 2':'Partner 1')+'</b> (Moon: '+moonTxt(G)+')<br>Bride side: <b>'+who(Br,flip?'Partner 1':'Partner 2')+'</b> (Moon: '+moonTxt(Br)+')</div>'
++'<div style="font-size:30px;font-weight:700;line-height:1.2;color:'+col+'">'+fmt(K.total)+' <span style="font-size:16px;font-weight:600">/ 36</span></div>'
++'<div style="font-weight:700;color:'+col+'">'+K.verdict.label+'</div>'
++'<div role="img" aria-label="Score '+fmt(K.total)+' out of 36" style="position:relative;height:12px;margin:8px 0;border-radius:6px;background:#e6dcf1;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+col+'"></div><div style="position:absolute;left:50%;top:0;width:2px;height:100%;background:#221b33;opacity:.55"></div></div>'
++'<div class="vk-n" style="margin-top:0">The line marks 18 points, the traditional minimum.</div>'
++'<p style="margin:8px 0 0">'+K.verdict.txt+'</p></div>'
++'<div class="vk-w"><table><tr><th>Koota<th>Got<th>Max<th>What it shows</tr>'+rows+'<tr><td><b>Total</b><td style="color:'+col+';font-weight:700">'+fmt(K.total)+'<td>36<td style="white-space:normal">'+K.verdict.label+'</tr></table></div>'
++'<div class="vk-n">'+note+'</div>'
++'<div class="vk-n">Based on Moon sign and nakshatra only (Lahiri). Bhakoot and Nadi doshas, their exceptions and the chart based checks are in the doshas section below.</div>'+warn+'</div>';
+el.insertAdjacentHTML('beforeend',h)}
+(window.VKM_HOOKS=window.VKM_HOOKS||[]).push(render);
+})();
+</script>
+<script>
+/* ===== PART 3 : Doshas and chart compatibility ===== */
+(function(){
+var C=window.VKCORE,KT=window.VKM_KOOTA;if(!C||!KT)return;
+var $=function(i){return document.getElementById(i)},esc=function(s){return String(s).replace(/[<>&"]/g,'')};
+var SG=C.SG,PF=C.PF,LORD=C.LORD,FR=KT.tables.FR,NU=360/27;
+var sgi=function(l){return Math.floor(l/30)},hs=function(s,r){return((s-r+12)%12)+1};
+var ord=function(n){return n+(n==1?'st':n==2?'nd':n==3?'rd':'th')};
+var circ=function(a,b){var d=Math.abs(a-b)%360;return d>180?360-d:d};
+var has=function(a,x){return a.indexOf(x)>-1};
+var OWN={Sun:[4],Moon:[3],Mars:[0,7],Mercury:[2,5],Jupiter:[8,11],Venus:[1,6],Saturn:[9,10]},EX={Sun:0,Moon:1,Mars:9,Mercury:5,Jupiter:3,Venus:11,Saturn:6},DB={Sun:6,Moon:7,Mars:3,Mercury:11,Jupiter:9,Venus:5,Saturn:0};
+function dig(n,s){if(!OWN[n])return'';return EX[n]===s?'Exalted':DB[n]===s?'Debilitated':has(OWN[n],s)?'Own sign':''}
+var ASP={Sun:[7],Moon:[7],Mars:[4,7,8],Mercury:[7],Jupiter:[5,7,9],Venus:[7],Saturn:[3,7,10]};
+var KEND=[1,4,5,7,9,10],GOOD=[1,4,5,7,9,10,11],DUS=[6,8,12];
+var CL={ok:'#1b7a3a',warn:'#b86e00',bad:'#b3261e'},IC={ok:'✔',warn:'!',bad:'✖'};
+var W='white-space:normal;min-width:150px;vertical-align:top';
+function tg(st,t){return'<span style="color:'+CL[st]+';font-weight:700">'+IC[st]+' '+t+'</span>'}
+/* ---- Manglik ---- */
+var MB=[1,2,4,7,8,12],MEX={2:[2,5],4:[0,7],7:[9,3],8:[3,11],12:[1,6]};
+function manglik(P){var L=P.L,ms=sgi(L[2]),ref=[['Lagna',P.unk?null:sgi(P.A)],['Moon',sgi(L[1])],['Venus',sgi(L[5])]],
+rows=ref.map(function(r){var h=r[1]==null?null:hs(ms,r[1]);return{ref:r[0],h:h,bad:h!=null&&has(MB,h)}}),
+n=rows.filter(function(r){return r.bad}).length,rel=[];
+if(n){var js=sgi(L[4]);
+if(has([0,7,9],ms))rel.push('Mars is in its own or exalted sign ('+SG[ms]+')');
+if(js==ms)rel.push('Mars is with Jupiter');else if(has([5,7,9],hs(ms,js)))rel.push('Jupiter aspects Mars');
+if(sgi(L[1])==ms)rel.push('Mars is with the Moon');
+var lh=rows[0].h;if(lh&&MEX[lh]&&has(MEX[lh],ms))rel.push('Mars in the '+ord(lh)+' house in '+SG[ms]+' is a classical exception')}
+return{rows:rows,n:n,lvl:['None','Low','Medium','High'][n],rel:rel,ms:ms}}
+function mcouple(a,b,la,lb){
+if(!a.n&&!b.n)return{st:'ok',res:'Clear',txt:'Neither chart has Mangal dosha from Lagna, Moon or Venus.'};
+if(a.n&&b.n){var lv=la+': '+a.lvl+', '+lb+': '+b.lvl;if(Math.abs(a.n-b.n)>=2)return{st:'warn',res:'Uneven',txt:'Both charts have Mangal dosha ('+lv+'), but the strength differs a lot, so the balance is only partial.'};return{st:'ok',res:'Balanced',txt:'Both charts have Mangal dosha ('+lv+'). Traditionally the two balance each other.'}}
+var m=a.n?a:b,w=a.n?la:lb;
+if(m.rel.length)return{st:'warn',res:'Reduced',txt:w+' has '+m.lvl.toLowerCase()+' Mangal dosha, reduced because '+m.rel.join('; ')+'.'};
+if(m.n==1)return{st:'warn',res:'Minor',txt:w+' has a low Mangal dosha (one reference only) and the partner has none.'};
+return{st:'bad',res:'Present',txt:w+' has '+m.lvl.toLowerCase()+' Mangal dosha and the partner has none. Check Mars strength and remedies with an astrologer.'}}
+/* ---- Nadi, Bhakoot, Gana ---- */
+function nadi(A,B,K){var d=K.det;if(!d.nadiDosha)return{st:'ok',res:'Clear',txt:'Different Nadi ('+d.groomNadi+' and '+d.brideNadi+').'};
+var l1=A.L[1],l2=B.L[1],n1=Math.floor(l1/NU),n2=Math.floor(l2/NU),s1=sgi(l1),s2=sgi(l2),p1=Math.floor(l1%NU/(NU/4)),p2=Math.floor(l2%NU/(NU/4)),ex=[];
+if(n1!=n2&&s1==s2)ex.push('same Moon sign but different nakshatra');
+if(n1==n2&&s1!=s2)ex.push('same nakshatra but different Moon sign');
+if(ex.length)return{st:'ok',res:'Cancelled',txt:'Both are '+d.groomNadi+' Nadi, but classical exception applies: '+ex.join('; ')+'.'};
+if(n1==n2&&s1==s2&&p1!=p2)return{st:'warn',res:'Partly eased',txt:'Both are '+d.groomNadi+' Nadi with the same nakshatra, but different pada. Only some texts accept this as an exception.'};
+return{st:'bad',res:'Present',txt:'Both are '+d.groomNadi+' Nadi. Traditionally linked to health and children concerns; consult an astrologer for remedies.'}}
+function bhak(K){var d=K.det;if(!d.bhakootDosha)return{st:'ok',res:'Clear',txt:'Groom sign is '+ord(d.bhakootDist)+' from the bride sign, which is favourable.'};
+var lg=LORD[d.groomSign],lb=LORD[d.brideSign],same=lg===lb,fr=!same&&has(FR[lg].F,lb)&&has(FR[lb].F,lg);
+if(same||fr)return{st:'ok',res:'Cancelled',txt:d.bhakootType+' dosha is cancelled because the Moon sign lords are '+(same?'the same planet ('+lg+')':'mutual friends ('+lg+' and '+lb+')')+'.'};
+return{st:'bad',res:'Present',txt:d.bhakootType+' dosha with lords '+lg+' and '+lb+' who are not mutual friends. Linked to friction in family life and finances.'}}
+function gana(K){var d=K.det,sc=d.ganaScore,t='Groom side '+d.groomGana+', bride side '+d.brideGana+'.';
+if(sc>=5)return{st:'ok',res:'Compatible',txt:t+' Nature is well matched.'};
+if(d.maitriScore>=4)return{st:'warn',res:'Eased',txt:t+' Gana is mismatched, but the Moon sign lords are friendly, which classical texts accept as an exception.'};
+return{st:'bad',res:'Mismatch',txt:t+' Temperaments differ strongly and the lords are not friendly, so patience and communication matter.'}}
+/* ---- Kaal Sarp ---- */
+var KS=['Anant','Kulik','Vasuki','Shankhpal','Padma','Mahapadma','Takshak','Karkotak','Shankhchud','Ghatak','Vishdhar','Sheshnag'];
+function kaal(P){var r=P.L[7],a=0,i;for(i=0;i<7;i++)if((P.L[i]-r+360)%360<180)a++;
+var on=a==7||a==0;return{on:on,name:on&&!P.unk?KS[hs(sgi(r),sgi(P.A))-1]+' Kaal Sarp':'Kaal Sarp'}}
+/* ---- 7th house, Venus, Jupiter ---- */
+function h7(P){if(P.unk)return null;var L=P.L,as=sgi(P.A),s7=(as+6)%12,lr=LORD[s7],li=PF.indexOf(lr),ls=sgi(L[li]),lh=hs(ls,as),occ=[],asp=[],sc=0,ld=dig(lr,ls);
+PF.forEach(function(n,i){var s=sgi(L[i]);
+if(s==s7){occ.push(n);if(n=='Jupiter'||n=='Venus')sc+=1;else if(n=='Mercury'||n=='Moon')sc+=.5;else if(n=='Sun')sc-=.5;else sc-=1}
+else if(ASP[n]&&has(ASP[n],hs(s7,s))){asp.push(n);if(n=='Jupiter')sc+=1;else if(n=='Venus'||n=='Mercury')sc+=.5;else if(n=='Mars'||n=='Saturn')sc-=.5}});
+if(has(GOOD,lh))sc+=1;else if(has(DUS,lh))sc-=1;
+if(ld=='Own sign'||ld=='Exalted')sc+=1;else if(ld=='Debilitated')sc-=1;
+var st=sc>=1.5?'ok':sc>=-.5?'warn':'bad',lab=sc>=1.5?'Supportive':sc>=-.5?'Moderate':'Needs care';
+return{sign:SG[s7],lord:lr,lordSign:SG[ls],lordHouse:lh,dign:ld,occ:occ,asp:asp,score:sc,st:st,lab:lab,lordIdx:li}}
+function kar(P,n){var i=PF.indexOf(n),L=P.L,s=sgi(L[i]),d=dig(n,s),h=P.unk?null:hs(s,sgi(P.A)),sc=0,nt=[];
+if(d=='Own sign'||d=='Exalted')sc+=2;else if(d=='Debilitated')sc-=2;
+if(h!=null){if(has([1,2,4,5,7,9,10,11],h))sc+=1;else if(has(DUS,h))sc-=1}
+if(n=='Venus'&&circ(L[5],L[0])<(P.rt[5]?8:10)){sc-=1;nt.push('combust')}
+if(P.rt[i])nt.push('retrograde');
+return{sign:SG[s],dig:d,h:h,sc:sc,lab:sc>=2?'Strong':sc>=0?'Moderate':'Weak',st:sc>=2?'ok':sc>=0?'warn':'bad',nt:nt}}
+/* ---- Navamsa D9 ---- */
+function d9(P,H7){var V=C.V,L=P.L,v=V(L[5],9),r={vs:v,vd:dig('Venus',v),vg:v==sgi(L[5]),pos:[],neg:[]};
+if(r.vd=='Own sign'||r.vd=='Exalted')r.pos.push('Venus is '+(r.vd=='Exalted'?'exalted':'in its own sign')+' in D9');
+if(r.vd=='Debilitated')r.neg.push('Venus is debilitated in D9');
+if(r.vg)r.pos.push('Venus is vargottama (same sign in D1 and D9)');
+if(!P.unk){r.al=V(P.A,9);r.vh=hs(v,r.al);r.ml=V(L[1],9);r.mg=r.ml==sgi(L[1]);r.ag=r.al==sgi(P.A);
+if(has(KEND,r.vh))r.pos.push('Venus is in the '+ord(r.vh)+' house from D9 Lagna');else if(has(DUS,r.vh))r.neg.push('Venus is in the '+ord(r.vh)+' house from D9 Lagna');
+r.l7=LORD[(r.al+6)%12];var i7=PF.indexOf(r.l7);r.l7s=V(L[i7],9);r.l7h=hs(r.l7s,r.al);r.l7d=dig(r.l7,r.l7s);
+if(r.l7d=='Own sign'||r.l7d=='Exalted'||has(KEND,r.l7h))r.pos.push('D9 7th lord '+r.l7+' is well placed');
+if(r.l7d=='Debilitated'||has(DUS,r.l7h))r.neg.push('D9 7th lord '+r.l7+' is weak or in a difficult house');
+r.l7g=H7?sgi(L[H7.lordIdx])==V(L[H7.lordIdx],9):false;if(r.l7g)r.pos.push('D1 7th lord is vargottama')}
+var d=r.pos.length-r.neg.length;r.st=d>=2?'ok':d>=0?'warn':'bad';r.lab=d>=2?'Strong':d>=0?'Moderate':'Needs care';return r}
+/* ---- Moon / Lagna relations ---- */
+var RL={1:['ok','Same sign','Similar outlook and easy understanding.'],2:['warn','2/12 (Dwi-Dwadash)','Differences around money, spending and priorities need care.'],3:['ok','3/11','Friendly and supportive, good for teamwork.'],4:['ok','4/10','Stable, helps in building a home and shared goals.'],5:['ok','5/9 (trine)','Warm and fortunate, though Bhakoot counts 5/9 as a dosha.'],6:['bad','6/8 (Shadashtak)','Can bring friction, ego clashes or health worries.'],7:['ok','1/7 (opposite)','Strong attraction and balance of opposites.']};
+function rl(d){var e=((12-(d-1))%12)+1;return RL[Math.min(d,e)]}
+function hmoon(h){return has([1,2,4,5,7,9,10,11],h)?'ok':has(DUS,h)?'bad':'warn'}
+/* ---- Afflictions of Sun, Moon, Venus ---- */
+var AF={Sun:['Saturn','Rahu','Ketu'],Moon:['Saturn','Rahu','Ketu'],Venus:['Saturn','Mars','Rahu','Ketu']};
+function aff(P){var L=P.L,out={};[['Sun',0],['Moon',1],['Venus',5]].forEach(function(x){var n=x[0],i=x[1],s=sgi(L[i]),f=[];
+AF[n].forEach(function(m){var j=PF.indexOf(m);
+if(sgi(L[j])==s){var t='with '+m+' ('+Math.round(circ(L[i],L[j]))+'°)';
+if(n=='Moon'&&m=='Saturn')t+=', Vish yoga';if(n!='Venus'&&(m=='Rahu'||m=='Ketu')&&circ(L[i],L[j])<=12)t+=', eclipse (Grahan) dosha';f.push(t)}
+else if((m=='Saturn'||m=='Mars')&&has(ASP[m],hs(s,sgi(L[j]))))f.push('aspected by '+m)});
+if(n=='Venus'&&circ(L[5],L[0])<(P.rt[5]?8:10))f.push('combust (very close to the Sun)');
+if(n=='Moon'&&circ(L[1],L[0])<12)f.push('very close to the Sun (new moon, weak Moon)');
+out[n]={f:f,st:f.length==0?'ok':f.length==1?'warn':'bad',lab:f.length==0?'Free':f.length==1?'Mild':'Afflicted'}});return out}
+/* ---- build ---- */
+function build(M){var A=M.A,B=M.B,K=M.K,la=esc(A.nm||'Partner 1'),lb=esc(B.nm||'Partner 2'),ma=manglik(A),mb=manglik(B),mc=mcouple(ma,mb,la,lb),
+D={manglik:{a:ma,b:mb,res:mc},nadi:nadi(A,B,K),bhakoot:bhak(K),gana:gana(K),kaal:{a:kaal(A),b:kaal(B)}},ha=h7(A),hb=h7(B);
+D.h7={a:ha,b:hb};D.ven={a:kar(A,'Venus'),b:kar(B,'Venus')};D.jup={a:kar(A,'Jupiter'),b:kar(B,'Jupiter')};
+D.d9={a:d9(A,ha),b:d9(B,hb)};D.aff={a:aff(A),b:aff(B)};
+D.moonRel=rl(hs(sgi(B.L[1]),sgi(A.L[1])));D.moonDist=hs(sgi(B.L[1]),sgi(A.L[1]));
+D.la=la;D.lb=lb;return D}
+function render(M,el){if(!M.K)return;var D=build(M),A=M.A,B=M.B,la=D.la,lb=D.lb,old=$('vk-m-dosha');if(old)old.remove();M.D=D;M.part=3;
+var h='<div id="vk-m-dosha"><h3>Doshas and chart compatibility</h3>';
+/* summary */
+var ka=D.kaal.a,kb=D.kaal.b,kst=!ka.on&&!kb.on?'ok':'warn',kres=!ka.on&&!kb.on?'Not formed':ka.on&&kb.on?'In both charts':'In one chart',
+ktxt=!ka.on&&!kb.on?'Planets are not all hemmed between Rahu and Ketu in either chart.':(ka.on?la+': '+ka.name+'. ':'')+(kb.on?lb+': '+kb.name+'. ':'')+(ka.on&&kb.on?'Some texts treat it as balanced when both partners have it.':'Often considered milder when the other chart does not have it.')+(A.unk||B.unk?' (Moon position is approximate when time is unknown.)':'');
+var S=[['Manglik (Mangal) dosha',D.manglik.res],['Nadi dosha (8 pts)',D.nadi],['Bhakoot dosha (7 pts)',D.bhakoot],['Gana dosha (6 pts)',D.gana],['Kaal Sarp yoga',{st:kst,res:kres,txt:ktxt}]];
+h+='<div class="vk-card"><div class="vk-w"><table><tr><th>Check<th>Result<th>Details</tr>'+S.map(function(r){return'<tr><td style="'+W+'"><b>'+r[0]+'</b><td style="'+W+'">'+tg(r[1].st,r[1].res)+'<td style="'+W+';min-width:220px">'+r[1].txt+'</tr>'}).join('')+'</table></div>'
++'<div class="vk-n">Cancellation only describes the traditional exception. The Guna Milan score above is not changed by it.</div></div>';
+/* manglik detail */
+var mrow=function(i){var a=D.manglik.a.rows[i],b=D.manglik.b.rows[i],f=function(r){return r.h==null?'<span class="vk-n">time unknown</span>':ord(r.h)+' house '+(r.bad?tg('bad','dosha'):tg('ok','clear'))};return'<tr><td><b>Mars from '+a.ref+'</b><td style="'+W+'">'+f(a)+'<td style="'+W+'">'+f(b)+'</tr>'};
+h+='<div style="font-weight:700;margin:16px 0 4px">Manglik detail</div><div class="vk-w"><table><tr><th><th>'+la+'<th>'+lb+'</tr>'+mrow(0)+mrow(1)+mrow(2)
++'<tr><td><b>Level</b><td>'+D.manglik.a.lvl+'<td>'+D.manglik.b.lvl+'</tr>'
++'<tr><td><b>Relief factors</b><td style="'+W+'">'+(D.manglik.a.rel.join('; ')||(D.manglik.a.n?'None found':'-'))+'<td style="'+W+'">'+(D.manglik.b.rel.join('; ')||(D.manglik.b.n?'None found':'-'))+'</tr></table></div>'
++'<div class="vk-n">Dosha houses counted: 1, 2, 4, 7, 8, 12. Mangal dosha is also believed to reduce after about age 28.'+((A.unk||B.unk)?' The Lagna reference is skipped for '+(A.unk&&B.unk?'both partners':A.unk?la:lb)+' because birth time is unknown, so the level can only reach Medium.':'')+'</div>';
+/* 7th house */
+var ha=D.h7.a,hb=D.h7.b;
+h+='<div style="font-weight:700;margin:16px 0 4px">7th house (marriage) and spouse significators</div>';
+if(ha||hb){var c7=function(x,f){return x?f(x):'<span class="vk-n">time unknown</span>'};
+h+='<div class="vk-w"><table><tr><th><th>'+la+'<th>'+lb+'</tr>'
++'<tr><td><b>7th sign</b><td>'+c7(ha,function(x){return x.sign})+'<td>'+c7(hb,function(x){return x.sign})+'</tr>'
++'<tr><td><b>7th lord</b><td style="'+W+'">'+c7(ha,function(x){return x.lord+' in '+x.lordSign+' ('+ord(x.lordHouse)+' house'+(x.dign?', '+x.dign.toLowerCase():'')+')'})+'<td style="'+W+'">'+c7(hb,function(x){return x.lord+' in '+x.lordSign+' ('+ord(x.lordHouse)+' house'+(x.dign?', '+x.dign.toLowerCase():'')+')'})+'</tr>'
++'<tr><td><b>Planets in 7th</b><td style="'+W+'">'+c7(ha,function(x){return x.occ.join(', ')||'None'})+'<td style="'+W+'">'+c7(hb,function(x){return x.occ.join(', ')||'None'})+'</tr>'
++'<tr><td><b>Aspects on 7th</b><td style="'+W+'">'+c7(ha,function(x){return x.asp.join(', ')||'None'})+'<td style="'+W+'">'+c7(hb,function(x){return x.asp.join(', ')||'None'})+'</tr>'
++'<tr><td><b>7th house</b><td>'+c7(ha,function(x){return tg(x.st,x.lab)})+'<td>'+c7(hb,function(x){return tg(x.st,x.lab)})+'</tr></table></div>'}
+else h+='<div class="vk-n">7th house needs a reliable Lagna, so it is skipped because birth time is unknown for both partners.</div>';
+var kr=function(o){return o.sign+(o.dig?', '+o.dig.toLowerCase():'')+(o.h?', '+ord(o.h)+' house':'')+(o.nt.length?', '+o.nt.join(', '):'')};
+h+='<div class="vk-w" style="margin-top:8px"><table><tr><th>Significator<th>'+la+'<th>'+lb+'</tr>'
++'<tr><td><b>Venus</b><td style="'+W+'">'+tg(D.ven.a.st,D.ven.a.lab)+'<div class="vk-n" style="margin:2px 0 0">'+kr(D.ven.a)+'</div><td style="'+W+'">'+tg(D.ven.b.st,D.ven.b.lab)+'<div class="vk-n" style="margin:2px 0 0">'+kr(D.ven.b)+'</div></tr>'
++'<tr><td><b>Jupiter</b><td style="'+W+'">'+tg(D.jup.a.st,D.jup.a.lab)+'<div class="vk-n" style="margin:2px 0 0">'+kr(D.jup.a)+'</div><td style="'+W+'">'+tg(D.jup.b.st,D.jup.b.lab)+'<div class="vk-n" style="margin:2px 0 0">'+kr(D.jup.b)+'</div></tr></table></div>'
++'<div class="vk-n">Venus is the main significator of marriage and love; Jupiter is especially important in a woman’s chart. Ratings are indicative, based on sign, house, combustion and aspects.</div>';
+/* navamsa */
+var na=D.d9.a,nb=D.d9.b,both=!A.unk&&!B.unk;
+var dl=function(x){return(x.pos.map(function(t){return tg('ok',t)}).concat(x.neg.map(function(t){return tg('bad',t)}))).join('<br>')||'<span class="vk-n">Nothing notable</span>'};
+h+='<div style="font-weight:700;margin:16px 0 4px">Navamsa (D9) check</div><div class="vk-w"><table><tr><th><th>'+la+'<th>'+lb+'</tr>'
++'<tr><td><b>Venus in D9</b><td>'+C.SG[na.vs]+(na.vd?' ('+na.vd.toLowerCase()+')':'')+'<td>'+C.SG[nb.vs]+(nb.vd?' ('+nb.vd.toLowerCase()+')':'')+'</tr>'
++'<tr><td><b>D9 Lagna</b><td>'+(A.unk?'<span class="vk-n">time unknown</span>':C.SG[na.al])+'<td>'+(B.unk?'<span class="vk-n">time unknown</span>':C.SG[nb.al])+'</tr>'
++'<tr><td><b>D9 Moon</b><td>'+(A.unk?'<span class="vk-n">approx.</span>':C.SG[na.ml]+(na.mg?' (vargottama)':''))+'<td>'+(B.unk?'<span class="vk-n">approx.</span>':C.SG[nb.ml]+(nb.mg?' (vargottama)':''))+'</tr>'
++'<tr><td><b>Findings</b><td style="'+W+'">'+dl(na)+'<td style="'+W+'">'+dl(nb)+'</tr>'
++'<tr><td><b>Marriage strength</b><td>'+tg(na.st,na.lab)+'<td>'+tg(nb.st,nb.lab)+'</tr></table></div>';
+if(both){var dm=rl(hs(C.V(B.L[1],9),C.V(A.L[1],9))),dl2=rl(hs(C.V(B.A,9),C.V(A.A,9)));
+h+='<div class="vk-n"><b>D9 Moon to Moon:</b> '+tg(dm[0],dm[1])+'. '+dm[2]+'<br><b>D9 Lagna to Lagna:</b> '+tg(dl2[0],dl2[1])+'. '+dl2[2]+'</div>'}
+else h+='<div class="vk-n">D9 Lagna and Moon comparison needs a reliable birth time for both partners.</div>';
+/* moon relation */
+var mr=D.moonRel,mh=hs(sgi(A.L[1]),sgi(B.L[1]));
+h+='<div style="font-weight:700;margin:16px 0 4px">Moon to Moon relation</div><div class="vk-card" style="margin-top:4px"><b>'+lb+'’s Moon is in the '+ord(D.moonDist)+' sign from '+la+'’s Moon</b> ('+la+' is '+ord(mh)+' from '+lb+')<br>'+tg(mr[0],mr[1])+'. '+mr[2];
+if(both){var x1=hs(sgi(B.L[1]),sgi(A.A)),x2=hs(sgi(A.L[1]),sgi(B.A)),ll=rl(hs(sgi(B.A),sgi(A.A)));
+h+='<div style="margin-top:8px">'+lb+'’s Moon falls in '+la+'’s '+ord(x1)+' house '+tg(hmoon(x1),hmoon(x1)=='ok'?'supportive':hmoon(x1)=='bad'?'stressful':'neutral')+'<br>'+la+'’s Moon falls in '+lb+'’s '+ord(x2)+' house '+tg(hmoon(x2),hmoon(x2)=='ok'?'supportive':hmoon(x2)=='bad'?'stressful':'neutral')+'<br>Lagna to Lagna: '+tg(ll[0],ll[1])+'</div>'}
+else h+='<div class="vk-n">Moon placement in each other’s houses needs a reliable birth time for both.</div>';
+h+='</div>';
+/* afflictions */
+var P1=D.aff.a,P2=D.aff.b,af=function(o,u){return tg(o.st,o.lab)+(o.f.length?'<div class="vk-n" style="margin:2px 0 0">'+o.f.join('; ')+(u?' (approx.)':'')+'</div>':'')};
+h+='<div style="font-weight:700;margin:16px 0 4px">Sun, Moon and Venus afflictions</div><div class="vk-w"><table><tr><th>Planet<th>'+la+'<th>'+lb+'</tr>'
++['Sun','Moon','Venus'].map(function(n){return'<tr><td><b>'+n+'</b><td style="'+W+'">'+af(P1[n],n=='Moon'&&A.unk)+'<td style="'+W+'">'+af(P2[n],n=='Moon'&&B.unk)+'</tr>'}).join('')+'</table></div>'
++'<div class="vk-n">Counted: conjunction with Saturn, Rahu, Ketu (and Mars for Venus), aspects of Saturn and Mars, and closeness to the Sun. Sun relates to ego and vitality, Moon to mind and emotions, Venus to love.</div>';
+h+='<div class="vk-n">These are classical, rule based checks and not a prediction. Every dosha has exceptions and should be read with the whole chart by a qualified astrologer.</div></div>';
+el.insertAdjacentHTML('beforeend',h)}
+window.VKM_DOSHA={build:build};
+(window.VKM_HOOKS=window.VKM_HOOKS||[]).push(render);
+})();
+</script>
+<script>
+/* ===== PART 4 : Timing and strength ===== */
+(function(){
+var C=window.VKCORE,KT=window.VKM_KOOTA;if(!C||!KT||!C.AVT)return;
+var $=function(i){return document.getElementById(i)},esc=function(s){return String(s).replace(/[<>&"]/g,'')};
+var SG=C.SG,PF=C.PF,LORD=C.LORD,DL=C.DL,DY=C.DY,FR=KT.tables.FR,Y=365.25*864e5,DAY=864e5,U=360/27;
+var sgi=function(l){return Math.floor(l/30)},hs=function(s,r){return((s-r+12)%12)+1},has=function(a,x){return a.indexOf(x)>-1};
+var ord=function(n){return n+(n==1?'st':n==2?'nd':n==3?'rd':'th')};
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var fm=function(t){var d=new Date(t);return MON[d.getUTCMonth()]+' '+d.getUTCFullYear()},fd=function(t){var d=new Date(t);return d.getUTCDate()+' '+MON[d.getUTCMonth()]+' '+d.getUTCFullYear()};
+var CL={ok:'#1b7a3a',warn:'#b86e00',bad:'#b3261e',mid:'#5b4d73'},IC={ok:'✔',warn:'!',bad:'✖',mid:'•'};
+var W='white-space:normal;min-width:130px;vertical-align:top';
+function tg(st,t){return'<span style="color:'+CL[st]+';font-weight:700">'+IC[st]+' '+t+'</span>'}
+/* ---- Vimshottari ---- */
+function dtable(P){var k=Math.floor(P.L[1]/U),fr=P.L[1]%U/U,l0=k%9,t=P.birth-fr*DY[l0]*Y,M=[];
+for(var i=0;i<18;i++){var l=(l0+i)%9,e=t+DY[l]*Y;M.push({l:l,n:DL[l],s:t,e:e});t=e}return M}
+function antars(m){var s=m.s,A=[];for(var j=0;j<9;j++){var l=(m.l+j)%9,e=s+DY[m.l]*DY[l]/120*Y;A.push({l:l,n:DL[l],s:s,e:e,m:m});s=e}return A}
+function at(T,t){for(var i=0;i<T.length;i++)if(t>=T[i].s&&t<T[i].e){var A=antars(T[i]);for(var j=0;j<9;j++)if(t>=A[j].s&&t<A[j].e)return{m:T[i],a:A[j]}}return null}
+function between(T,t1,t2){var o=[];T.forEach(function(m){if(m.e<=t1||m.s>=t2)return;antars(m).forEach(function(a){if(a.e>t1&&a.s<t2)o.push(a)})});return o}
+/* ---- Harmony of two dasha lords (Rahu acts like Saturn, Ketu like Mars) ---- */
+var RK={Rahu:'Saturn',Ketu:'Mars'};
+function rel(a,b){var t=FR[a];return has(t.F,b)?'F':has(t.E,b)?'E':'N'}
+function hm(a,b){var s,lab;if(a===b){s=5;lab='Same lord'}else{var x=RK[a]||a,y=RK[b]||b;
+if(x===y){s=4;lab='Similar nature'}else{var k=[rel(x,y),rel(y,x)].sort().join('');s={FF:5,FN:4,NN:3,EF:1,EN:.5,EE:0}[k];lab={FF:'Mutual friends',FN:'Friendly',NN:'Neutral',EF:'One sided friction',EN:'Cool',EE:'Mutual enemies'}[k]}}
+return{s:s,lab:lab,st:s>=4?'ok':s>=3?'mid':s>=1?'warn':'bad',h:s>=4?1:s<=1?-1:0}}
+/* ---- Marriage support planets: 7th lord, Venus, Jupiter ---- */
+function supp(P){var ref=P.unk?sgi(P.L[1]):sgi(P.A),s7=(ref+6)%12,lr=LORD[s7],set=[lr];['Venus','Jupiter'].forEach(function(n){if(!has(set,n))set.push(n)});return{set:set,lord:lr,from:P.unk?'Moon sign (approx.)':'Lagna',s7:s7,ref:ref}}
+function lvl(S,m,a){var x=has(S.set,m.n),y=has(S.set,a.n);return x&&y?2:y?1:x?.5:0}
+var LV={2:['ok','Strong'],1:['mid','Moderate'],.5:['mid','Background'],0:['mid','-']};
+/* ---- Transits ---- */
+function sadeOf(hSat){return hSat==12?'Sade Sati phase 1 (Saturn 12th from Moon)':hSat==1?'Sade Sati phase 2 (Saturn over Moon)':hSat==2?'Sade Sati phase 3 (Saturn 2nd from Moon)':hSat==4?'Dhaiya (Saturn 4th from Moon)':hSat==8?'Dhaiya (Saturn 8th from Moon)':''}
+function tr(P,Lt,S){var js=sgi(Lt[4]),ss=sgi(Lt[6]),ms=sgi(P.L[1]),hj=hs(js,ms),hsat=hs(ss,ms),s7=S.s7;
+return{js:js,ss:ss,hj:hj,hsat:hsat,jupOk:has([2,5,7,9,11],hj),satOk:has([3,6,11],hsat),jup7:js==s7||has([5,7,9],hs(s7,js)),sat7:ss==s7||has([3,7,10],hs(s7,ss)),sade:sadeOf(hsat),sadeOn:has([12,1,2],hsat)}}
+/* Saturn sign segments, weekly sampling, short flickers from retrograde merged */
+function satSegs(now){var t0=now-8*Y,t1=now+10*Y,st=7*DAY,raw=[],t,jd,dt;
+for(t=t0;t<=t1;t+=st){dt=new Date(t);jd=C.JD(dt.getUTCFullYear(),dt.getUTCMonth()+1,dt.getUTCDate(),dt.getUTCHours());var s=sgi(C.pos(jd)[6]);
+if(raw.length&&raw[raw.length-1].s==s)raw[raw.length-1].e=t+st;else raw.push({s:s,t:t,e:t+st})}
+var o=[];raw.forEach(function(r,i){var p=o[o.length-1],n=raw[i+1];
+if(p&&n&&r.e-r.t<60*DAY&&p.s==n.s){p.e=r.e;return}
+if(p&&p.s==r.s){p.e=r.e;return}o.push({s:r.s,t:r.t,e:r.e})});return o}
+function sadeWin(P,segs,now){var ms=sgi(P.L[1]),set=[(ms+11)%12,ms,(ms+1)%12],g=[],cur=null;
+segs.forEach(function(s){if(has(set,s.s)){if(cur&&cur.e>=s.t-300*DAY)cur.e=s.e;else{cur={t:s.t,e:s.e};g.push(cur)}}});
+var inG=null,nxt=null,prv=null;g.forEach(function(x){if(now>=x.t&&now<x.e)inG=x;else if(x.t>now&&!nxt)nxt=x;else if(x.e<=now)prv=x});
+return{inG:inG,nxt:nxt,prv:prv,first:segs[0].t,last:segs[segs.length-1].e}}
+/* ---- Ashtakavarga (from Lagna, so skipped when birth time unknown) ---- */
+function av(P){if(P.unk)return null;var as=sgi(P.A),src=P.L.slice(0,7).map(sgi).concat([as]),B=C.AVT.map(function(r){var b=[0,0,0,0,0,0,0,0,0,0,0,0];r.forEach(function(h,k){h.split(',').forEach(function(x){b[(src[k]+ +x-1)%12]++})});return b.map(function(_,i){return b[(as+i)%12]})}),
+sav=B[0].map(function(_,i){return B.reduce(function(a,r){return a+r[i]},0)}),mh=(sgi(P.L[1])-as+12)%12;
+return{B:B,sav:sav,tot:sav.reduce(function(a,b){return a+b},0),h7:sav[6],v7:B[5][6],j7:B[4][6],moon:sav[mh],h1:sav[0],h2:sav[1],h11:sav[10]}}
+function avl(v,a,b){return v>=a?['ok','Strong']:v>=b?['mid','Average']:['warn','Low']}
+/* ---- Build ---- */
+function build(M){var A=M.A,B=M.B,now=M.now||Date.now(),dt=new Date(now),jdN=C.JD(dt.getUTCFullYear(),dt.getUTCMonth()+1,dt.getUTCDate(),dt.getUTCHours()),LN=C.pos(jdN),
+TA=dtable(A),TB=dtable(B),SA=supp(A),SB=supp(B),ca=at(TA,now),cb=at(TB,now),T={now:now,a:{},b:{}};
+[['a',A,TA,SA,ca],['b',B,TB,SB,cb]].forEach(function(x){var P=x[1],o=T[x[0]];o.table=x[2];o.supp=x[3];o.cur=x[4];o.tr=tr(P,LN,x[3]);o.av=av(P);
+var w=between(x[2],now,now+6*Y).map(function(a){return{a:a,lv:lvl(x[3],a.m,a)}}).filter(function(r){return r.lv>=1});o.win=w.slice(0,6)});
+if(ca&&cb){T.hMaha=hm(ca.m.n,cb.m.n);T.hAnt=hm(ca.a.n,cb.a.n);T.nextChange=Math.min(ca.m.e,cb.m.e,ca.a.e,cb.a.e);T.overlapEnd=Math.min(ca.a.e,cb.a.e)}
+var segs=satSegs(now);T.sade={a:sadeWin(A,segs,now),b:sadeWin(B,segs,now)};
+/* half year timeline, 5 years */
+T.line=[];for(var i=0;i<10;i++){var s=now+i*Y/2,e=s+Y/2,mid=s+Y/4,d2=new Date(mid),L=C.pos(C.JD(d2.getUTCFullYear(),d2.getUTCMonth()+1,d2.getUTCDate(),d2.getUTCHours())),
+xa=at(TA,mid),xb=at(TB,mid),ta=tr(A,L,SA),tb=tr(B,L,SB);if(!xa||!xb)continue;
+var h=hm(xa.a.n,xb.a.n),la=lvl(SA,xa.m,xa.a),lb=lvl(SB,xb.m,xb.a),sup=(la>=2||lb>=2?1:0)+(la>=1&&lb>=1?1:0),jp=(ta.jup7||tb.jup7||ta.jupOk||tb.jupOk)?1:0,sd=(ta.sadeOn?.5:0)+(tb.sadeOn?.5:0),o=h.h+sup+jp-sd;
+T.line.push({s:s,e:e,xa:xa,xb:xb,h:h,la:la,lb:lb,jp:jp,sade:sd,score:o,lab:o>=2.5?'Favourable':o>=1.5?'Good':o>=0?'Mixed':'Go slow',st:o>=2.5?'ok':o>=1.5?'ok':o>=0?'mid':'warn',jup:{a:ta,b:tb}})}
+T.LN=LN;return T}
+/* ---- Render ---- */
+function render(M,el){var T=build(M),A=M.A,B=M.B,la=esc(A.nm||'Partner 1'),lb=esc(B.nm||'Partner 2'),old=$('vk-m-timing');if(old)old.remove();M.T=T;M.part=4;
+var h='<div id="vk-m-timing"><h3>Timing and strength</h3>';
+if(A.unk||B.unk)h+='<div class="vk-n" style="color:#b3261e;font-weight:600">&#9888; Birth time is unknown for '+(A.unk&&B.unk?'both partners':A.unk?la:lb)+'. Dasha dates are approximate (the Moon moves about 13° a day), and Lagna based items use the Moon sign instead. Ashtakavarga is skipped for that partner.</div>';
+/* dasha now */
+var ca=T.a.cur,cb=T.b.cur,dc=function(c,k){return c?c[k].n+' <span class="vk-n">until '+fd(c[k].e)+'</span>':'-'};
+h+='<div style="font-weight:700;margin:12px 0 4px">Current dasha (Vimshottari)</div><div class="vk-w"><table><tr><th><th>'+la+'<th>'+lb+'</tr>'
++'<tr><td><b>Mahadasha</b><td style="'+W+'">'+dc(ca,'m')+'<td style="'+W+'">'+dc(cb,'m')+'</tr>'
++'<tr><td><b>Antardasha</b><td style="'+W+'">'+dc(ca,'a')+'<td style="'+W+'">'+dc(cb,'a')+'</tr></table></div>';
+if(T.hMaha){h+='<div class="vk-card" style="margin-top:8px"><div><b>Mahadasha lords:</b> '+ca.m.n+' and '+cb.m.n+' '+tg(T.hMaha.st,T.hMaha.lab)+'</div><div style="margin-top:4px"><b>Antardasha lords:</b> '+ca.a.n+' and '+cb.a.n+' '+tg(T.hAnt.st,T.hAnt.lab)+'</div>'
++'<div class="vk-n">Both current Antardashas run together until '+fd(T.overlapEnd)+'. The next change in either partner’s dasha is in '+fm(T.nextChange)+'. Rahu is treated like Saturn and Ketu like Mars for friendship.</div></div>'}
+/* windows */
+h+='<div style="font-weight:700;margin:16px 0 4px">Marriage and relationship windows (next 6 years)</div><div class="vk-n" style="margin-top:0">Periods when the Antardasha lord is the 7th lord, Venus or Jupiter. Strong means the Mahadasha lord is also one of them.</div>';
+[['a',la],['b',lb]].forEach(function(x){var o=T[x[0]],r=o.win;
+h+='<div class="vk-card" style="margin:8px 0"><b>'+x[1]+'</b><div class="vk-n" style="margin:2px 0 6px">Key planets: '+o.supp.set.join(', ')+' (7th lord from '+o.supp.from+': '+o.supp.lord+')</div>'
++(r.length?'<div class="vk-w"><table><tr><th>Period<th>Dasha<th>Support</tr>'+r.map(function(q){var l=LV[q.lv];return'<tr><td>'+(q.a.s<T.now?'Now':fm(q.a.s))+' to '+fm(q.a.e)+'<td>'+q.a.m.n+' / '+q.a.n+'<td>'+tg(l[0],l[1])+'</tr>'}).join('')+'</table></div>':'<div class="vk-n" style="margin:0">No period with a key planet as Antardasha lord in the next 6 years.</div>')+'</div>'});
+/* transits */
+var tx=function(o,k){return o.tr[k]};
+var sd=function(g,o){var s=o.tr.sade;if(g.inG)return tg(s?'warn':'ok',s||'Sade Sati window')+'<div class="vk-n" style="margin:2px 0 0">In the Sade Sati period '+(g.inG.t<=g.first+8*DAY?'(started before '+fm(g.first)+')':'since '+fm(g.inG.t))+' until '+fm(g.inG.e)+'</div>';
+var t=s?tg('warn',s):tg('ok','No Sade Sati now');if(g.nxt)t+='<div class="vk-n" style="margin:2px 0 0">Next Sade Sati: '+fm(g.nxt.t)+' to '+fm(g.nxt.e)+'</div>';else if(g.prv)t+='<div class="vk-n" style="margin:2px 0 0">Last ended '+fm(g.prv.e)+'</div>';return t};
+h+='<div style="font-weight:700;margin:16px 0 4px">Transits today (Jupiter and Saturn)</div><div class="vk-w"><table><tr><th><th>'+la+'<th>'+lb+'</tr>'
++'<tr><td><b>Jupiter</b> in '+SG[T.a.tr.js]+'<td style="'+W+'">'+ord(T.a.tr.hj)+' from Moon '+(T.a.tr.jupOk?tg('ok','supportive'):tg('mid','neutral'))+'<div class="vk-n" style="margin:2px 0 0">'+(T.a.tr.jup7?'In or aspecting the 7th house '+tg('ok','good for relationship matters'):'Not on the 7th house')+'</div><td style="'+W+'">'+ord(T.b.tr.hj)+' from Moon '+(T.b.tr.jupOk?tg('ok','supportive'):tg('mid','neutral'))+'<div class="vk-n" style="margin:2px 0 0">'+(T.b.tr.jup7?'In or aspecting the 7th house '+tg('ok','good for relationship matters'):'Not on the 7th house')+'</div></tr>'
++'<tr><td><b>Saturn</b> in '+SG[T.a.tr.ss]+'<td style="'+W+'">'+ord(T.a.tr.hsat)+' from Moon '+(T.a.tr.satOk?tg('ok','supportive'):tg('mid','neutral'))+'<div class="vk-n" style="margin:2px 0 0">'+(T.a.tr.sat7?'In or aspecting the 7th house '+tg('warn','needs patience in relationship matters'):'Not on the 7th house')+'</div><td style="'+W+'">'+ord(T.b.tr.hsat)+' from Moon '+(T.b.tr.satOk?tg('ok','supportive'):tg('mid','neutral'))+'<div class="vk-n" style="margin:2px 0 0">'+(T.b.tr.sat7?'In or aspecting the 7th house '+tg('warn','needs patience in relationship matters'):'Not on the 7th house')+'</div></tr>'
++'<tr><td><b>Sade Sati / Dhaiya</b><td style="'+W+'">'+sd(T.sade.a,T.a)+'<td style="'+W+'">'+sd(T.sade.b,T.b)+'</tr></table></div>'
++'<div class="vk-n">The 7th house is counted from the Lagna ('+(A.unk||B.unk?'from the Moon sign where birth time is unknown':'both known')+'). Dates of Sade Sati are approximate to the month.</div>';
+/* ashtakavarga */
+var aa=T.a.av,ab=T.b.av,ac=function(o,f,k,a,b){if(!o)return'<span class="vk-n">time unknown</span>';var v=o[k],l=f(v,a,b);return v+' '+tg(l[0],l[1])};
+h+='<div style="font-weight:700;margin:16px 0 4px">Ashtakavarga strength (from Lagna)</div><div class="vk-w"><table><tr><th>Measure<th>'+la+'<th>'+lb+'</tr>'
++'<tr><td><b>SAV of 7th house</b><td>'+ac(aa,avl,'h7',28,25)+'<td>'+ac(ab,avl,'h7',28,25)+'</tr>'
++'<tr><td><b>Venus points in 7th</b><td>'+ac(aa,avl,'v7',5,4)+'<td>'+ac(ab,avl,'v7',5,4)+'</tr>'
++'<tr><td><b>Jupiter points in 7th</b><td>'+ac(aa,avl,'j7',5,4)+'<td>'+ac(ab,avl,'j7',5,4)+'</tr>'
++'<tr><td><b>SAV of Moon sign</b><td>'+ac(aa,avl,'moon',28,25)+'<td>'+ac(ab,avl,'moon',28,25)+'</tr>'
++'<tr><td><b>SAV of 2nd and 11th</b><td>'+(aa?aa.h2+' and '+aa.h11:'<span class="vk-n">time unknown</span>')+'<td>'+(ab?ab.h2+' and '+ab.h11:'<span class="vk-n">time unknown</span>')+'</tr></table></div>'
++'<div class="vk-n">Average SAV is about 28 per house. Strong 7th house points support a stable partnership. Venus and Jupiter points of 5 or more are good.</div>';
+/* timeline */
+h+='<div style="font-weight:700;margin:16px 0 4px">Next 5 years harmony timeline</div><div class="vk-w"><table><tr><th>Period<th>'+la+'<th>'+lb+'<th>Dasha lords<th>Outlook</tr>'
++T.line.map(function(r){var f=function(x,l){return x.m.n+' / '+x.a.n+(l>=1?' '+tg(LV[l][0],'key'):'')};
+return'<tr><td>'+fm(r.s)+' to '+fm(r.e)+'<td style="'+W+'">'+f(r.xa,r.la)+'<td style="'+W+'">'+f(r.xb,r.lb)+'<td style="'+W+'">'+tg(r.h.st,r.h.lab)+'<td style="'+W+'">'+tg(r.st,r.lab)+(r.jp?'<div class="vk-n" style="margin:2px 0 0">Jupiter supportive</div>':'')+(r.sade?'<div class="vk-n" style="margin:2px 0 0">Sade Sati active</div>':'')+'</tr>'}).join('')+'</table></div>'
++'<div class="vk-n">Outlook combines the harmony of the two Antardasha lords, key planet periods (7th lord, Venus, Jupiter), Jupiter transit support and Sade Sati, using the mid point of each six month period. It is a rough guide, not a prediction.</div></div>';
+el.insertAdjacentHTML('beforeend',h)}
+window.VKM_TIMING={build:build,dtable:dtable,at:at,hm:hm};
+(window.VKM_HOOKS=window.VKM_HOOKS||[]).push(render);
+})();
+</script>
+<script>
+/* ===== PART 5 : Visual results (gauge, koota bars, charts, strengths and concerns, share) ===== */
+(function(){
+var C=window.VKCORE;if(!C)return;
+var $=function(i){return document.getElementById(i)},esc=function(s){return String(s).replace(/[<>&"]/g,'')};
+var SG=C.SG,PN=C.PN,V=C.V;
+var LANG='en',CH={mode:'D1',sty:'n'},CUR=null;
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var fm=function(t){var d=new Date(t);return MON[d.getUTCMonth()]+' '+d.getUTCFullYear()};
+var fmt=function(x){return x%1?x.toFixed(1):String(x)};
+var CL={ok:'#1b7a3a',warn:'#b86e00',bad:'#b3261e',mid:'#5b4d73'};
+var KC={excellent:'#1b7a3a',good:'#3d8b2f',average:'#b86e00',low:'#b3261e'};
+var OC={strong:'#1b7a3a',good:'#3d8b2f',mixed:'#b86e00',low:'#b3261e'};
+var tt=function(en,hi){return LANG==='hi'?hi:en};
+function nm(P,i){return esc(P.nm||'')||tt('Partner '+i,'साथी '+i)}
+function names(list){return list.join(tt(' and ',' और '))}
+var KH={Varna:'वर्ण',Vashya:'वश्य',Tara:'तारा',Yoni:'योनि','Graha Maitri':'ग्रह मैत्री',Gana:'गण',Bhakoot:'भकूट',Nadi:'नाड़ी'};
+var MH={varna:'अहंकार, कार्य और आध्यात्मिक सामंजस्य',vashya:'आपसी आकर्षण और प्रभाव',tara:'जन्म नक्षत्र का तालमेल, स्वास्थ्य और कल्याण',yoni:'शारीरिक और अंतरंग अनुकूलता',maitri:'मानसिक तालमेल और मित्रता',gana:'स्वभाव और प्रकृति',bhakoot:'प्रेम, पारिवारिक सुख और समृद्धि',nadi:'स्वास्थ्य, आनुवंशिकता और संतान'};
+var PH={Sun:'सूर्य',Moon:'चंद्र',Mars:'मंगल',Mercury:'बुध',Jupiter:'गुरु',Venus:'शुक्र',Saturn:'शनि',Rahu:'राहु',Ketu:'केतु'};
+var ph=function(n){return tt(n,PH[n]||n)};
+var VH={excellent:['Excellent match','उत्कृष्ट मेल','Very high compatibility on the Guna Milan scale.','गुण मिलान के पैमाने पर बहुत ऊँची अनुकूलता।'],
+good:['Good match','अच्छा मेल','Good compatibility. Most areas support the relationship.','अच्छी अनुकूलता। ज़्यादातर क्षेत्र रिश्ते का साथ देते हैं।'],
+average:['Average match','औसत मेल','Passes the minimum of 18, but a few areas need care and understanding.','न्यूनतम 18 अंक पार हैं, पर कुछ क्षेत्रों में ध्यान और समझदारी चाहिए।'],
+low:['Low match','कमज़ोर मेल','Below the minimum of 18. Check the doshas and the charts before concluding.','न्यूनतम 18 से कम। निष्कर्ष से पहले दोष और कुंडलियाँ भी देखें।']};
+var OV={strong:['Very supportive','बहुत सहायक','Strong overall support. The score, doshas, charts and timing mostly point the same way.','कुल मिलाकर मज़बूत सहयोग। अंक, दोष, कुंडली और समय ज़्यादातर एक ही दिशा में हैं।'],
+good:['Good','अच्छा','Good overall. A few areas need attention, but the main indicators are supportive.','कुल मिलाकर अच्छा। कुछ बातों पर ध्यान देना होगा, पर मुख्य संकेत सहायक हैं।'],
+mixed:['Mixed, needs care','मिला-जुला, ध्यान चाहिए','A mixed picture with real strengths and real concerns. Read the concerns below and talk them through before deciding.','मिला-जुला चित्र, जिसमें असली ताकतें और असली चिंताएँ दोनों हैं। निर्णय से पहले नीचे की चिंताएँ पढ़ें और आपस में बात करें।'],
+low:['Challenging','चुनौतीपूर्ण','More concerns than strengths. This does not decide the relationship; check the details and consult a qualified astrologer.','चिंताएँ ताकतों से ज़्यादा हैं। इससे रिश्ते का फ़ैसला नहीं होता; विवरण देखें और किसी योग्य ज्योतिषी से सलाह लें।']};
+var RH={Clear:'साफ़',Balanced:'संतुलित',Uneven:'असंतुलित',Reduced:'कम हुआ',Minor:'हल्का',Present:'मौजूद',Cancelled:'कटा हुआ','Partly eased':'आंशिक राहत',Compatible:'अनुकूल',Eased:'राहत',Mismatch:'बेमेल','Not formed':'नहीं बना','In both charts':'दोनों में','In one chart':'एक में'};
+var LH={Favourable:'अनुकूल',Good:'अच्छा',Mixed:'मिला-जुला','Go slow':'धीरे चलें'};
+/* ---- overall score (transparent weights: Guna 50, doshas 15, charts 20, timing 15) ---- */
+var SV={ok:1,warn:.5,bad:0,mid:.6},TV={ok:1,mid:.6,warn:.3,bad:0},LT={'Favourable':1,'Good':.75,'Mixed':.45,'Go slow':.15};
+var avg=function(a){return a.length?a.reduce(function(x,y){return x+y},0)/a.length:NaN};
+function kaalInfo(D){var a=D.kaal.a.on,b=D.kaal.b.on;return{st:a||b?'warn':'ok',res:!a&&!b?'Not formed':a&&b?'In both charts':'In one chart'}}
+function overall(M){var K=M.K,D=M.D,T=M.T,kl=kaalInfo(D),cv=[],tv=[],x;
+var dv=[D.manglik.res.st,D.nadi.st,D.bhakoot.st,D.gana.st,kl.st].map(function(s){return SV[s]});
+['a','b'].forEach(function(x){if(D.h7[x])cv.push(SV[D.h7[x].st]);cv.push(SV[D.ven[x].st]);cv.push(SV[D.jup[x].st]);cv.push(SV[D.d9[x].st]);cv.push(SV[D.aff[x].Venus.st])});
+cv.push(SV[D.moonRel[0]]);
+if(T&&T.hMaha){tv.push(TV[T.hMaha.st]);tv.push(TV[T.hAnt.st])}
+if(T&&T.line)T.line.slice(0,4).forEach(function(r){tv.push(LT[r.lab])});
+var comps=[{k:'guna',w:50,v:K.total/36},{k:'dosha',w:15,v:avg(dv)},{k:'chart',w:20,v:avg(cv)},{k:'timing',w:15,v:avg(tv)}].filter(function(c){return !isNaN(c.v)});
+var sw=0,sv=0;comps.forEach(function(c){sw+=c.w;sv+=c.w*c.v});
+var pct=Math.round(100*sv/sw),key=pct>=75?'strong':pct>=62?'good':pct>=48?'mixed':'low';
+if(K.total<18&&(key==='strong'||key==='good'))key='mixed';
+if((M.A.unk||M.B.unk)&&key==='strong')key='good';
+return{pct:pct,key:key,comps:comps}}
+var CN={guna:['Guna Milan','गुण मिलान'],dosha:['Doshas','दोष'],chart:['Charts (7th house, Venus, D9)','कुंडली (7वाँ भाव, शुक्र, D9)'],timing:['Timing','समय']};
+/* ---- strengths and concerns ---- */
+function notes(M){var K=M.K,D=M.D,T=M.T,A=M.A,B=M.B,S=[],Cn=[],P2=[['a',A,nm(A,1)],['b',B,nm(B,2)]],both=function(f){return P2.filter(f).map(function(x){return x[2]})};
+var tot=fmt(K.total),vk=K.verdict.key;
+if(K.total>=25)S.push(tt('Guna Milan is '+tot+' of 36 ('+VH[vk][0].toLowerCase()+').','गुण मिलान '+tot+'/36 है ('+VH[vk][1]+')।'));
+else if(K.total>=18)S.push(tt('Guna Milan passes the minimum of 18 ('+tot+' of 36).','गुण मिलान न्यूनतम 18 से ऊपर है ('+tot+'/36)।'));
+else Cn.push(tt('Guna Milan is '+tot+' of 36, below the minimum of 18.','गुण मिलान '+tot+'/36 है, जो न्यूनतम 18 से कम है।'));
+var kn=function(r){return tt(r.name,KH[r.name]||r.name)},full=K.rows.filter(function(r){return r.got>=r.max}).map(kn),zero=K.rows.filter(function(r){return r.got==0&&r.max>=2}).map(kn);
+if(full.length)S.push(tt('Full marks in '+full.join(', ')+'.',full.join(', ')+' में पूरे अंक मिले।'));
+if(zero.length)Cn.push(tt('Zero marks in '+zero.join(', ')+'.',zero.join(', ')+' में शून्य अंक मिले।'));
+/* doshas */
+if(D.nadi.res==='Cancelled')S.push(tt('Nadi dosha is cancelled by a classical exception.','नाड़ी दोष शास्त्रीय अपवाद से कट जाता है।'));
+if(D.nadi.st==='bad')Cn.push(tt('Nadi dosha is present (same Nadi). It is linked to health and children concerns.','नाड़ी दोष है (एक ही नाड़ी)। इसे स्वास्थ्य और संतान से जुड़ी चिंता माना जाता है।'));
+else if(D.nadi.st==='warn')Cn.push(tt('Nadi dosha is only partly eased (same nakshatra, different pada).','नाड़ी दोष केवल आंशिक रूप से हल्का हुआ है (एक नक्षत्र, अलग पद)।'));
+if(D.bhakoot.res==='Cancelled')S.push(tt('Bhakoot dosha is cancelled because the Moon sign lords are the same or friends.','भकूट दोष कट जाता है, क्योंकि राशि स्वामी एक ही हैं या मित्र हैं।'));
+if(D.bhakoot.st==='bad')Cn.push(tt('Bhakoot dosha ('+(K.det.bhakootType||'present')+') can bring friction in family life and finances.','भकूट दोष ('+(K.det.bhakootType||'मौजूद')+') से पारिवारिक जीवन और धन में खटास आ सकती है।'));
+if(D.gana.st==='warn')S.push(tt('Gana mismatch is eased because the Moon sign lords are friendly.','गण का बेमेल राशि स्वामियों की मित्रता से हल्का हो जाता है।'));
+if(D.gana.st==='bad')Cn.push(tt('Gana mismatch: temperaments differ strongly, so patience and communication matter.','गण बेमेल है: स्वभाव में बड़ा अंतर है, इसलिए धैर्य और बातचीत ज़रूरी है।'));
+var mr=D.manglik.res;
+if(mr.res==='Clear')S.push(tt('No Manglik dosha in either chart.','किसी भी कुंडली में मांगलिक दोष नहीं है।'));
+else if(mr.res==='Balanced')S.push(tt('Manglik dosha is in both charts and traditionally balances out.','दोनों कुंडलियों में मांगलिक दोष है, जो परंपरा से एक-दूसरे को संतुलित करता है।'));
+else if(mr.st!=='ok')Cn.push(tt(mr.txt,'मांगलिक दोष: '+(RH[mr.res]||mr.res)+'।'+(mr.res==='Present'?' मंगल की स्थिति किसी ज्योतिषी से जँचवाएँ।':'')));
+var ks=both(function(x){return D.kaal[x[0]].on});
+if(ks.length)Cn.push(tt('Kaal Sarp yoga is present in the chart of '+names(ks)+'.',names(ks)+' की कुंडली में काल सर्प योग है।'));
+/* chart strengths */
+var L1=function(get,st){return both(function(x){var o=get(x[0]);return o&&o.st===st})};
+var s7=L1(function(x){return D.h7[x]},'ok'),b7=L1(function(x){return D.h7[x]},'bad');
+if(s7.length)S.push(tt('7th house (marriage) is supportive for '+names(s7)+'.',names(s7)+' के लिए 7वाँ भाव (विवाह) सहायक है।'));
+if(b7.length)Cn.push(tt('7th house needs care for '+names(b7)+'.',names(b7)+' के 7वें भाव पर ध्यान देने की ज़रूरत है।'));
+var sv=L1(function(x){return D.ven[x]},'ok'),bv=L1(function(x){return D.ven[x]},'bad');
+if(sv.length)S.push(tt('Venus (love) is strong for '+names(sv)+'.',names(sv)+' के लिए शुक्र (प्रेम) मज़बूत है।'));
+if(bv.length)Cn.push(tt('Venus is weak for '+names(bv)+'.',names(bv)+' के लिए शुक्र कमज़ोर है।'));
+var av2=L1(function(x){return D.aff[x].Venus},'bad');
+if(av2.length&&!bv.length)Cn.push(tt('Venus is afflicted for '+names(av2)+'.',names(av2)+' के शुक्र पर पाप प्रभाव है।'));
+var sj=L1(function(x){return D.jup[x]},'ok');
+if(sj.length)S.push(tt('Jupiter is strong for '+names(sj)+'.',names(sj)+' के लिए गुरु मज़बूत है।'));
+var sd=L1(function(x){return D.d9[x]},'ok'),bd=L1(function(x){return D.d9[x]},'bad');
+if(sd.length)S.push(tt('Navamsa (D9) supports marriage for '+names(sd)+'.',names(sd)+' के लिए नवांश (D9) विवाह का साथ देता है।'));
+if(bd.length)Cn.push(tt('Navamsa (D9) shows weak marriage support for '+names(bd)+'.',names(bd)+' के नवांश (D9) में विवाह का सहारा कमज़ोर है।'));
+var mo=D.moonRel;
+if(mo[0]==='ok')S.push(tt('Moon signs are in a "'+mo[1]+'" relation. '+mo[2],'चंद्र राशियों का आपसी संबंध अनुकूल है ('+mo[1]+')।'));
+else Cn.push(tt('Moon signs are in a "'+mo[1]+'" relation. '+mo[2],'चंद्र राशियों का संबंध '+(mo[0]==='bad'?'कठिन माना जाता है':'थोड़ी सावधानी माँगता है')+' ('+mo[1]+')।'));
+/* timing */
+if(T&&T.hMaha){var ca=T.a.cur,cb=T.b.cur,hM=T.hMaha.st,hA=T.hAnt.st;
+if(hM==='ok'&&hA==='ok')S.push(tt('Mahadasha and Antardasha lords are friendly towards each other.','महादशा और अंतर्दशा के स्वामी एक-दूसरे के मित्र हैं।'));
+else if(hM==='ok')S.push(tt('Mahadasha lords are friendly towards each other.','महादशा स्वामी एक-दूसरे के मित्र हैं।'));
+else if(hA==='ok')S.push(tt('Antardasha lords are friendly towards each other.','अंतर्दशा स्वामी एक-दूसरे के मित्र हैं।'));
+if(hM==='warn'||hM==='bad')Cn.push(tt('Mahadasha lords ('+ca.m.n+' and '+cb.m.n+') are not on friendly terms.','महादशा स्वामी ('+ph(ca.m.n)+' और '+ph(cb.m.n)+') आपस में मित्र नहीं हैं।'));
+if(hA==='warn'||hA==='bad')Cn.push(tt('Antardasha lords ('+ca.a.n+' and '+cb.a.n+') are not on friendly terms.','अंतर्दशा स्वामी ('+ph(ca.a.n)+' और '+ph(cb.a.n)+') आपस में मित्र नहीं हैं।'))}
+if(T)P2.forEach(function(x){var o=T[x[0]],q=null;(o.win||[]).forEach(function(r){if(!q&&r.lv>=2)q=r});
+if(q){var s=q.a.s<T.now?tt('now','अभी'):fm(q.a.s);S.push(tt('Strong marriage-support period for '+x[2]+': '+s+' to '+fm(q.a.e)+'.',x[2]+' के लिए विवाह के लिए अनुकूल मज़बूत दशा: '+s+' से '+fm(q.a.e)+' तक।'))}});
+if(T&&T.line&&T.line.length){var okN=T.line.filter(function(r){return r.st==='ok'}).length;
+if(okN>=4)S.push(tt(okN+' of the next '+T.line.length+' half-year periods look favourable or good.','अगली '+T.line.length+' छमाही अवधियों में से '+okN+' अनुकूल या अच्छी हैं।'));
+if(T.line.slice(0,2).some(function(r){return r.st==='warn'}))Cn.push(tt('The next year has "Go slow" periods in the timeline.','अगले एक वर्ष की समय-रेखा में "धीरे चलें" वाली अवधि है।'))}
+if(T){var ha=both(function(x){var v=T[x[0]].av;return v&&v.h7>=28}),la=both(function(x){var v=T[x[0]].av;return v&&v.h7<25});
+if(ha.length)S.push(tt('7th house Ashtakavarga is strong (28+ points) for '+names(ha)+'.',names(ha)+' के लिए 7वें भाव का अष्टकवर्ग मज़बूत है (28+ अंक)।'));
+if(la.length)Cn.push(tt('7th house Ashtakavarga is low (under 25) for '+names(la)+'.',names(la)+' के लिए 7वें भाव का अष्टकवर्ग कम है (25 से नीचे)।'));
+var jt=both(function(x){return T[x[0]].tr.jup7});
+if(jt.length)S.push(tt('Jupiter now supports the 7th house of '+names(jt)+'.','गुरु इस समय '+names(jt)+' के 7वें भाव को सहारा दे रहा है।'));
+P2.forEach(function(x){var r=T[x[0]].tr;if(r.sade)Cn.push(tt(x[2]+': '+r.sade+' is running now.',x[2]+' पर अभी साढ़े साती / ढैया का प्रभाव चल रहा है।'))});
+var st7=both(function(x){return T[x[0]].tr.sat7});
+if(st7.length)Cn.push(tt('Saturn sits on or aspects the 7th house of '+names(st7)+' now, so relationship matters need patience.','शनि अभी '+names(st7)+' के 7वें भाव पर है या उसे देख रहा है, इसलिए रिश्ते के मामलों में धैर्य चाहिए।'))}
+var un=both(function(x){return x[1].unk});
+if(un.length)Cn.push(tt('Birth time is unknown for '+names(un)+', so Lagna based results are skipped or approximate.',names(un)+' का जन्म समय अज्ञात है, इसलिए लग्न आधारित परिणाम छोड़े गए हैं या अनुमानित हैं।'));
+return{S:S.slice(0,9),C:Cn.slice(0,9)}}
+function bothLang(M){var keep=LANG,o={};['en','hi'].forEach(function(l){LANG=l;o[l]=notes(M)});LANG=keep;return o}
+function doshaChips(M){var D=M.D,kl=kaalInfo(D),r=function(o){return{st:o.st,res:o.res}};
+return[[tt('Manglik','मांगलिक'),r(D.manglik.res)],[tt('Nadi','नाड़ी'),r(D.nadi)],[tt('Bhakoot','भकूट'),r(D.bhakoot)],[tt('Gana','गण'),r(D.gana)],[tt('Kaal Sarp','काल सर्प'),kl]].map(function(x){return{n:x[0],st:x[1].st,res:tt(x[1].res,RH[x[1].res]||x[1].res)}})}
+function outlook(M){var T=M.T;if(!T||!T.line||!T.line.length)return'';return T.line.slice(0,2).map(function(r){return tt(r.lab,LH[r.lab]||r.lab)}).join(tt(', then ',', फिर '))}
+/* ---- gauge ---- */
+function gauge(K){var col=KC[K.verdict.key],f=Math.max(0,Math.min(.9999,K.total/36)),cx=120,cy=124,pt=function(fr,rr){var a=Math.PI*fr;return[+(cx-rr*Math.cos(a)).toFixed(1),+(cy-rr*Math.sin(a)).toFixed(1)]},e=pt(f,90);
+var s='<svg viewBox="0 0 240 160" role="img" aria-label="'+tt('Guna Milan score '+fmt(K.total)+' out of 36','गुण मिलान अंक 36 में से '+fmt(K.total))+'" style="max-width:300px"><path d="M30 '+cy+'A90 90 0 0 1 210 '+cy+'" fill="none" stroke="#e6dcf1" stroke-width="18"/>'
++(K.total>0?'<path d="M30 '+cy+'A90 90 0 0 1 '+e[0]+' '+e[1]+'" fill="none" stroke="'+col+'" stroke-width="18"/>':'');
+[18,25,33].forEach(function(n){var a=pt(n/36,77),b=pt(n/36,101),c=pt(n/36,114);s+='<line x1="'+a[0]+'" y1="'+a[1]+'" x2="'+b[0]+'" y2="'+b[1]+'" stroke="#221b33" stroke-width="2" opacity=".55"/><text x="'+c[0]+'" y="'+(c[1]+3)+'" font-size="10" text-anchor="middle">'+n+'</text>'});
+return s+'<text x="120" y="108" font-size="36" font-weight="700" text-anchor="middle" style="fill:'+col+'">'+fmt(K.total)+'</text><text x="120" y="142" font-size="13" text-anchor="middle">'+tt('out of 36','36 में से')+'</text></svg>'}
+function bars(K){return K.rows.map(function(r){var p=r.max?r.got/r.max:0,c=r.got>=r.max?CL.ok:r.got==0?CL.bad:p>=.5?'#3d8b2f':CL.warn,mean=tt(r.meaning,MH[r.k]||r.meaning);
+return'<div style="margin:9px 0"><div style="display:flex;justify-content:space-between;gap:8px;font-size:14px"><b>'+tt(r.name,KH[r.name]||r.name)+'</b><b style="color:'+c+'">'+fmt(r.got)+' / '+r.max+'</b></div><div class="vk5-track" role="img" aria-label="'+tt(r.name,KH[r.name]||r.name)+' '+fmt(r.got)+'/'+r.max+'"><div class="vk5-fill" style="width:'+Math.round(p*100)+'%;background:'+c+'"></div></div><div class="vk-n" style="margin:2px 0 0">'+mean+'</div></div>'}).join('')}
+function lis(a,col,empty){return a.length?a.map(function(t){return'<div class="vk5-li" style="border-color:'+col+'">'+t+'</div>'}).join(''):'<div class="vk-n">'+empty+'</div>'}
+/* ---- share text ---- */
+function shareText(M){var K=M.K,O=M.V.overall,A=M.A,B=M.B,N=notes(M),ck=doshaChips(M).map(function(c){return c.n+': '+c.res}).join(' | '),url='';
+try{if(/^https?:$/.test(location.protocol))url=location.origin+location.pathname+'#match'}catch(e){}
+var ol=outlook(M),L=['*'+tt('Kundli Match','कुंडली मिलान')+'*: '+nm(A,1)+' & '+nm(B,2),
+tt('Guna Milan','गुण मिलान')+': '+fmt(K.total)+'/36 ('+tt(VH[K.verdict.key][0],VH[K.verdict.key][1])+')',
+tt('Overall','कुल मिलाकर')+': '+tt(OV[O.key][0],OV[O.key][1])+' ('+O.pct+'%)',ck];
+if(ol)L.push(tt('Next 12 months','अगले 12 महीने')+': '+ol);
+if(N.S.length){L.push('','*'+tt('Strengths','ताकतें')+'*');L.push.apply(L,N.S.slice(0,5).map(function(x){return'+ '+x}))}
+if(N.C.length){L.push('','*'+tt('Concerns','चिंताएँ')+'*');L.push.apply(L,N.C.slice(0,5).map(function(x){return'- '+x}))}
+L.push('',tt('A rule based guide, not a prediction. Please consult a qualified astrologer for decisions.','यह नियम आधारित मार्गदर्शन है, भविष्यवाणी नहीं। निर्णय के लिए योग्य ज्योतिषी से सलाह लें।'));
+if(url)L.push(url);return L.join('\n')}
+function fb(s,ok){var a=document.createElement('textarea');a.value=s;a.setAttribute('readonly','');a.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(a);a.select();var done=false;try{done=document.execCommand('copy')}catch(e){}a.remove();ok(done)}
+function copyTxt(s,ok){if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).then(function(){ok(true)},function(){fb(s,ok)});else fb(s,ok)}
+/* ---- summary block ---- */
+function drawTop(){var M=CUR,K=M.K,O=M.V.overall,N=notes(M),box=$('vk-m5-sum'),vh=VH[K.verdict.key],oc=OC[O.key],ov=OV[O.key],gm=K.groom==='a'?M.A:M.B,br=K.groom==='a'?M.B:M.A,gi=K.groom==='a'?1:2,bi=K.groom==='a'?2:1,ol=outlook(M);
+var h='<h3>'+tt('Match summary','मिलान सारांश')+'</h3>'
++'<div class="vk-tabs" id="vk-m5-lang" role="group" aria-label="Language"><button type="button" class="vk-sec vk-auto'+(LANG==='en'?' vk-on':'')+'" data-l="en" aria-pressed="'+(LANG==='en')+'">English</button><button type="button" class="vk-sec vk-auto'+(LANG==='hi'?' vk-on':'')+'" data-l="hi" aria-pressed="'+(LANG==='hi')+'">हिन्दी</button></div>'
++'<div class="vk-card" style="text-align:center"><div class="vk-n" style="margin-top:0">'+tt('Groom side','वर पक्ष')+': <b>'+nm(gm,gi)+'</b> &#183; '+tt('Bride side','वधू पक्ष')+': <b>'+nm(br,bi)+'</b></div>'+gauge(K)
++'<div style="font-size:20px;font-weight:700;color:'+KC[K.verdict.key]+'">'+vh[LANG==='hi'?1:0]+'</div><p style="margin:4px 0 0">'+vh[LANG==='hi'?3:2]+'</p><div class="vk-n">'+tt('Ticks mark 18 (minimum), 25 (good) and 33 (excellent).','निशान 18 (न्यूनतम), 25 (अच्छा) और 33 (उत्कृष्ट) दिखाते हैं।')+'</div></div>'
++'<div class="vk-card"><div style="font-weight:700;font-size:13px">'+tt('Overall indication','कुल संकेत')+'</div><div style="font-size:22px;font-weight:700;line-height:1.3;color:'+oc+'">'+ov[LANG==='hi'?1:0]+' <span style="font-size:15px;font-weight:600">('+O.pct+'%)</span></div><p style="margin:4px 0 8px">'+ov[LANG==='hi'?3:2]+'</p>'
++O.comps.map(function(c){var p=Math.round(c.v*100),col=p>=70?CL.ok:p>=45?CL.warn:CL.bad;return'<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:13px"><span>'+CN[c.k][LANG==='hi'?1:0]+'</span><b style="color:'+col+'">'+p+'%</b></div><div class="vk5-track" role="img" aria-label="'+CN[c.k][LANG==='hi'?1:0]+' '+p+'%"><div class="vk5-fill" style="width:'+p+'%;background:'+col+'"></div></div></div>'}).join('')
++'<div style="margin-top:10px">'+doshaChips(M).map(function(c){return'<span class="vk5-chip" style="color:'+CL[c.st]+'"><b>'+c.n+':</b> '+c.res+'</span>'}).join('')+'</div>'
++(ol?'<div class="vk-n" style="margin-bottom:0">'+tt('Next 12 months outlook','अगले 12 महीनों का रुझान')+': <b>'+ol+'</b></div>':'')
++'<div class="vk-n" style="margin-bottom:0">'+tt('Weights: Guna Milan 50%, doshas 15%, charts 20%, timing 15%. A rough guide built from the checks below.','भार: गुण मिलान 50%, दोष 15%, कुंडली 20%, समय 15%। नीचे की जाँचों से बना मोटा मार्गदर्शन।')+'</div></div>'
++'<div class="vk-card"><div style="font-weight:700">'+tt('Ashtakoota points','अष्टकूट अंक')+'</div>'+bars(K)+'</div>'
++'<div class="vk-card" style="border-color:'+CL.ok+'"><div style="font-weight:700;color:'+CL.ok+'">'+tt('Strengths','ताकतें')+'</div>'+lis(N.S,CL.ok,tt('No clear strengths found from the checks.','जाँच में कोई स्पष्ट ताकत नहीं मिली।'))+'</div>'
++'<div class="vk-card" style="border-color:'+CL.warn+'"><div style="font-weight:700;color:'+CL.warn+'">'+tt('Concerns','चिंताएँ')+'</div>'+lis(N.C,CL.warn,tt('No major concerns found from the checks.','जाँच में कोई बड़ी चिंता नहीं मिली।'))+'</div>'
++'<div class="vk-tabs"><button type="button" class="vk-sec vk-auto" id="vk-m5-pr">'+tt('Print','प्रिंट')+'</button><button type="button" class="vk-sec vk-auto" id="vk-m5-wa">'+tt('Share on WhatsApp','WhatsApp पर भेजें')+'</button><button type="button" class="vk-sec vk-auto" id="vk-m5-cp">'+tt('Copy summary','सारांश कॉपी करें')+'</button></div>'
++'<div class="vk-n" id="vk-m5-st" role="status" aria-live="polite" style="min-height:1.5em;margin-top:0"></div>'
++'<div class="vk-n">'+tt('Rule based guide from the checks in this tool. It is not a prediction, and every dosha has exceptions. Please consult a qualified astrologer before big decisions.','यह इस टूल की जाँचों पर आधारित नियम-आधारित मार्गदर्शन है, भविष्यवाणी नहीं। हर दोष के अपवाद होते हैं। बड़े निर्णय से पहले योग्य ज्योतिषी से सलाह लें।')+'</div>';
+box.innerHTML=h;
+[].forEach.call(box.querySelectorAll('#vk-m5-lang button'),function(b){b.onclick=function(){LANG=b.dataset.l;drawTop();drawCharts()}});
+$('vk-m5-pr').onclick=function(){window.print()};
+var st=function(t){var e=$('vk-m5-st');if(e)e.textContent=t};
+$('vk-m5-wa').onclick=function(){var w=window.open('https://wa.me/?text='+encodeURIComponent(shareText(M)),'_blank','noopener');if(!w)st(tt('Pop-up blocked. Use "Copy summary" and paste it in WhatsApp.','पॉप-अप रुका। "सारांश कॉपी करें" दबाकर WhatsApp में पेस्ट करें।'))};
+$('vk-m5-cp').onclick=function(){copyTxt(shareText(M),function(ok){st(ok?tt('Summary copied.','सारांश कॉपी हो गया।'):tt('Could not copy. Please select and copy the text manually.','कॉपी नहीं हुआ। कृपया टेक्स्ट चुनकर खुद कॉपी करें।'))})}}
+/* ---- charts ---- */
+function csd(P,mode){var L=P.L,u=P.unk,as,pl=[],i;
+if(mode==='D9'){as=V(P.A,9);for(i=0;i<9;i++)pl.push({n:i,s:V(L[i],9),r:i<7&&P.rt[i]})}
+else{as=Math.floor((u?L[1]:P.A)/30);for(i=0;i<9;i++)pl.push({n:i,s:Math.floor(L[i]/30),r:i<7&&P.rt[i]})}
+return{a:as,p:pl}}
+function items(c,s,first){var it=c.p.filter(function(p){return p.s==s}).map(function(p){return PN[p.n]+(p.r?'(R)':'')});if(first)it.unshift('Asc');
+if(it.length>3){var q=[];for(var k=0;k<it.length;k+=2)q.push(it.slice(k,k+2).join(' '));it=q}return it}
+function north(c){var Pc=[[200,75],[100,40],[40,100],[70,200],[40,300],[100,360],[200,325],[300,360],[360,300],[330,200],[360,100],[300,40]],Sc=[[200,190],[100,88],[88,100],[188,200],[88,300],[100,312],[200,212],[300,312],[312,300],[212,200],[312,100],[300,88]];
+var o='<svg viewBox="0 0 400 400" font-size="14" text-anchor="middle" role="img" aria-label="North Indian chart"><g fill="none" stroke="var(--ln)" stroke-width="2"><rect x="1" y="1" width="398" height="398"/><path d="M0 0L400 400M400 0L0 400M200 0L0 200L200 400L400 200Z"/></g>';
+for(var h=1;h<=12;h++){var s=(c.a+h-1)%12,it=items(c,s,h==1);o+='<text class="vk-sn" x="'+Sc[h-1][0]+'" y="'+(Sc[h-1][1]+4)+'">'+(s+1)+'</text>';
+it.forEach(function(x,i){o+='<text x="'+Pc[h-1][0]+'" y="'+(Pc[h-1][1]+4+i*16-(it.length-1)*8)+'">'+x+'</text>'})}
+return o+'</svg>'}
+function south(c){var G=[[1,0],[2,0],[3,0],[3,1],[3,2],[3,3],[2,3],[1,3],[0,3],[0,2],[0,1],[0,0]];
+var o='<svg viewBox="0 0 400 400" font-size="14" text-anchor="middle" role="img" aria-label="South Indian chart"><g fill="none" stroke="var(--ln)" stroke-width="2"><rect x="1" y="1" width="398" height="398"/><path d="M100 0V400M200 0V100M200 300V400M300 0V400M0 100H400M0 200H100M300 200H400M0 300H400"/></g>';
+for(var s=0;s<12;s++){var x=G[s][0],y=G[s][1],it=items(c,s,s==c.a);o+='<text class="vk-sn" x="'+(x*100+12)+'" y="'+(y*100+16)+'">'+(s+1)+'</text>';
+it.forEach(function(t,i){o+='<text x="'+(x*100+50)+'" y="'+(y*100+42+i*17)+'">'+t+'</text>'})}
+return o+'</svg>'}
+function drawCharts(){var M=CUR,box=$('vk-m5-ch'),mode=CH.mode;
+var one=function(P,i){var u=P.unk,t=mode==='D9'?tt('Navamsa (D9) chart','नवांश (D9) कुंडली'):u?tt('Moon chart (birth time unknown)','चंद्र कुंडली (जन्म समय अज्ञात)'):tt('D1 Lagna chart','D1 लग्न कुंडली'),body,sub;
+if(mode==='D9'&&u){body='<div class="vk-n" style="color:#b3261e;font-weight:600">&#9888; '+tt('D9 needs a reliable birth time.','D9 के लिए सही जन्म समय चाहिए।')+'</div>'}
+else{var c=csd(P,mode);body=CH.sty==='n'?north(c):south(c)}
+sub=(u?tt('Moon sign','चंद्र राशि')+': '+SG[Math.floor(P.L[1]/30)]:tt('Lagna','लग्न')+': '+SG[mode==='D9'?V(P.A,9):Math.floor(P.A/30)]+' &#183; '+tt('Moon','चंद्र')+': '+SG[mode==='D9'?V(P.L[1],9):Math.floor(P.L[1]/30)]);
+return'<div class="vk-card" style="margin:0"><b>'+nm(P,i)+'</b><div class="vk-n" style="margin:2px 0 6px">'+t+' &#183; '+sub+'</div>'+body+'</div>'};
+box.innerHTML='<h3>'+tt('Both kundli charts','दोनों कुंडलियाँ')+'</h3><div class="vk-tabs"><button type="button" class="vk-sec vk-auto'+(mode==='D1'?' vk-on':'')+'" id="vk-m5-c1" aria-pressed="'+(mode==='D1')+'">'+tt('D1 Rashi','D1 राशि')+'</button><button type="button" class="vk-sec vk-auto'+(mode==='D9'?' vk-on':'')+'" id="vk-m5-c9" aria-pressed="'+(mode==='D9')+'">'+tt('D9 Navamsa','D9 नवांश')+'</button><button type="button" class="vk-sec vk-auto" id="vk-m5-cs">'+tt('Style: ','शैली: ')+(CH.sty==='n'?tt('North Indian','उत्तर भारतीय'):tt('South Indian','दक्षिण भारतीय'))+'</button></div>'
++'<div class="vk5-grid">'+one(M.A,1)+one(M.B,2)+'</div><div class="vk-n">'+tt('House numbers in the corners are sign numbers (1 = Aries). Asc marks the ascendant. R means retrograde. If birth time is unknown, the Moon sign is used as the first house.','कोनों के अंक राशि संख्या हैं (1 = मेष)। Asc लग्न दिखाता है। R का अर्थ वक्री है। जन्म समय अज्ञात हो तो चंद्र राशि को पहला भाव माना गया है।')+'</div>';
+$('vk-m5-c1').onclick=function(){CH.mode='D1';drawCharts()};$('vk-m5-c9').onclick=function(){CH.mode='D9';drawCharts()};$('vk-m5-cs').onclick=function(){CH.sty=CH.sty==='n'?'s':'n';drawCharts()}}
+/* ---- hook ---- */
+function render(M,el){if(!M.K||!M.D||!M.T)return;var old=$('vk-m-visual');if(old)old.remove();CUR=M;M.part=5;
+M.V={overall:overall(M),lang:bothLang(M)};
+var w=document.createElement('div');w.id='vk-m-visual';w.innerHTML='<div id="vk-m5-sum"></div><div id="vk-m5-ch"></div>';el.insertBefore(w,el.firstChild);drawTop();drawCharts()}
+window.VKM_VISUAL={overall:overall,notes:function(M,l){var keep=LANG;LANG=l==='hi'?'hi':'en';var o=notes(M);LANG=keep;return o},share:function(M,l){var keep=LANG;LANG=l==='hi'?'hi':'en';M.V=M.V||{overall:overall(M)};var s=shareText(M);LANG=keep;return s},setLang:function(l){LANG=l==='hi'?'hi':'en';if(CUR){drawTop();drawCharts()}}};
+(window.VKM_HOOKS=window.VKM_HOOKS||[]).push(render);
+})();
+</script>
+<script>
+/* ===== PART 6 : Couple AI prompt, saved couples, final polish ===== */
+(function(){
+var C=window.VKCORE;if(!C)return;
+var $=function(i){return document.getElementById(i)},esc=function(s){return String(s).replace(/[<>&"]/g,'')};
+var SG=C.SG,PF=C.PF,nk=C.nk,dm=C.dm,V=C.V;
+var p2=function(n){return(n<10?'0':'')+n},sgi=function(l){return Math.floor(l/30)};
+var iso=function(t){return new Date(t).toISOString().slice(0,10)};
+var TOP={marriage:'Marriage compatibility',love:'Love and emotional understanding',family:'Family life and in-laws',children:'Children and family planning',career:'Career and money after marriage',health:'Health and well-being as a couple',timing:'Best timing for marriage',dosha:'Doshas and remedies',general:'Overall relationship'};
+var QS={topic:'marriage',style:'simple',q:''},CUR=null,SK='vk_couples_v1';
+/* ---------- prompt data ---------- */
+function person(M,x,idx){var P=x==='a'?M.A:M.B,T=M.T[x],D=M.D,L=P.L,u=P.unk,as=sgi(P.A),ref=u?sgi(L[1]):as,h=function(l){return(sgi(l)-ref+12)%12+1},o=[],nm=P.nm||('Partner '+idx);
+o.push('=== PARTNER '+idx+': '+nm+' ===');
+o.push('Gender: '+(P.gn||'not given'));
+o.push('Date and time of birth: '+P.y+'-'+p2(P.m)+'-'+p2(P.d)+' '+(u?'(time unknown)':P.tm)+' (UTC'+(P.tz>=0?'+':'')+P.tz+'), '+P.place+', latitude '+P.lat+', longitude '+P.lon);
+if(u)o.push('WARNING: the birth time of '+nm+' is UNKNOWN. The ascendant, houses (counted below from the Moon sign), divisional charts, Ashtakavarga and dasha dates are unreliable. Base conclusions for this person mainly on the Moon sign, Moon nakshatra and Mahadasha, and say clearly in the answer that the birth time is unknown.');
+o.push(u?'Ascendant: not available':'Ascendant (Lagna): '+SG[as]+' '+dm(P.A%30)+', nakshatra '+nk(P.A));
+o.push('D1 planets (sidereal, Lahiri; houses are '+(u?'counted from the Moon sign':'whole sign from the Lagna')+'):');
+PF.forEach(function(n,i){o.push('- '+n+(i<7&&P.rt[i]?' (retrograde)':'')+': '+SG[sgi(L[i])]+' '+dm(L[i]%30)+', '+nk(L[i])+', house '+h(L[i]))});
+if(!u)o.push('Navamsa (D9) ascendant '+SG[V(P.A,9)]+'; D9 signs: '+PF.map(function(n,i){return n+' '+SG[V(L[i],9)]}).join(', '));
+var h7=D.h7[x];
+if(h7)o.push('7th house: '+h7.sign+', lord '+h7.lord+' in '+h7.lordSign+' (house '+h7.lordHouse+(h7.dign?', '+h7.dign.toLowerCase():'')+'); planets in 7th: '+(h7.occ.join(', ')||'none')+'; planets aspecting 7th: '+(h7.asp.join(', ')||'none')+'; tool rating: '+h7.lab);
+['Venus','Jupiter'].forEach(function(n){var k=n==='Venus'?D.ven[x]:D.jup[x];o.push(n+': '+k.sign+(k.dig?', '+k.dig.toLowerCase():'')+(k.h?', house '+k.h:'')+(k.nt.length?', '+k.nt.join(', '):'')+'; tool rating: '+k.lab)});
+var d9=D.d9[x];if(d9.pos.length||d9.neg.length)o.push('Navamsa findings: '+d9.pos.concat(d9.neg).join('; ')+' (tool rating: '+d9.lab+')');
+o.push('Afflictions: '+['Sun','Moon','Venus'].map(function(n){var a=D.aff[x][n];return n+': '+(a.f.join('; ')||'none')}).join(' | '));
+var mg=D.manglik[x];o.push('Mangal (Manglik) check, Mars from: '+mg.rows.map(function(r){return r.ref+' = '+(r.h==null?'n/a':'house '+r.h+(r.bad?' (dosha)':''))}).join(', ')+'; level: '+mg.lvl+(mg.rel.length?'; relief: '+mg.rel.join('; '):''));
+o.push('Kaal Sarp yoga: '+(D.kaal[x].on?D.kaal[x].name:'not formed'));
+if(T.av)o.push('Ashtakavarga (from Lagna): SAV houses 1-12 = '+T.av.sav.join(' ')+' (total '+T.av.tot+'); 7th house SAV '+T.av.h7+'; Venus points in 7th '+T.av.v7+'; Jupiter points in 7th '+T.av.j7+'; SAV of Moon sign '+T.av.moon);
+else o.push('Ashtakavarga: skipped (birth time unknown)');
+if(T.cur)o.push('Current dasha: Mahadasha '+T.cur.m.n+' until '+iso(T.cur.m.e)+', Antardasha '+T.cur.a.n+' until '+iso(T.cur.a.e));
+o.push('Marriage support planets (7th lord from '+T.supp.from+', Venus, Jupiter): '+T.supp.set.join(', '));
+o.push('Upcoming marriage or relationship periods (next 6 years, Antardasha lord is a support planet): '+(T.win.length?T.win.map(function(q){return q.a.m.n+'/'+q.a.n+' '+(q.a.s<M.T.now?'now':iso(q.a.s))+' to '+iso(q.a.e)+(q.lv>=2?' (strong)':' (moderate)')}).join('; '):'none'));
+var tr=T.tr;o.push('Transits today: Jupiter in '+SG[tr.js]+' (house '+tr.hj+' from Moon'+(tr.jup7?', on or aspecting the 7th house':'')+'), Saturn in '+SG[tr.ss]+' (house '+tr.hsat+' from Moon'+(tr.sat7?', on or aspecting the 7th house':'')+')'+(tr.sade?'; '+tr.sade:''));
+return o.join('\n')}
+function couple(M){var K=M.K,D=M.D,T=M.T,A=M.A,B=M.B,V5=M.V,o=[],na=A.nm||'Partner 1',nb=B.nm||'Partner 2',gm=K.groom==='a'?na:nb,br=K.groom==='a'?nb:na;
+o.push('=== ASHTAKOOTA GUNA MILAN (computed, do not recalculate) ===');
+o.push('Groom side: '+gm+'. Bride side: '+br+'. '+K.note);
+K.rows.forEach(function(r){o.push('- '+r.name+': '+r.got+' / '+r.max+' ('+r.detail+')')});
+o.push('Total: '+K.total+' / 36 (minimum 18). Tool verdict: '+K.verdict.label);
+o.push('');o.push('=== DOSHA CHECKS (with traditional exceptions) ===');
+o.push('- Manglik: '+D.manglik.res.res+'. '+D.manglik.res.txt);
+o.push('- Nadi: '+D.nadi.res+'. '+D.nadi.txt);
+o.push('- Bhakoot: '+D.bhakoot.res+'. '+D.bhakoot.txt);
+o.push('- Gana: '+D.gana.res+'. '+D.gana.txt);
+o.push('- Kaal Sarp: '+(D.kaal.a.on||D.kaal.b.on?(D.kaal.a.on?na+': '+D.kaal.a.name+'. ':'')+(D.kaal.b.on?nb+': '+D.kaal.b.name+'.':''):'not formed in either chart'));
+o.push('');o.push('=== MOON AND CHART RELATIONS ===');
+o.push('Moon sign of '+nb+' is the '+D.moonDist+(D.moonDist==1?'st':D.moonDist==2?'nd':D.moonDist==3?'rd':'th')+' sign from the Moon sign of '+na+': '+D.moonRel[1]+'. '+D.moonRel[2]);
+if(T.hMaha)o.push('Dasha harmony: Mahadasha lords '+T.a.cur.m.n+' and '+T.b.cur.m.n+' = '+T.hMaha.lab+'; Antardasha lords '+T.a.cur.a.n+' and '+T.b.cur.a.n+' = '+T.hAnt.lab+'. Both Antardashas run together until '+iso(T.overlapEnd)+'. Next change in either dasha: '+iso(T.nextChange)+'.');
+o.push('');o.push('=== NEXT 5 YEARS, HALF-YEAR TIMELINE (rough guide from dasha harmony, support planets, Jupiter transit and Sade Sati) ===');
+T.line.forEach(function(r){o.push('- '+iso(r.s)+' to '+iso(r.e)+': '+na+' '+r.xa.m.n+'/'+r.xa.a.n+', '+nb+' '+r.xb.m.n+'/'+r.xb.a.n+', dasha lords '+r.h.lab+', outlook '+r.lab+(r.jp?', Jupiter supportive':'')+(r.sade?', Sade Sati active':''))});
+if(V5){var N=window.VKM_VISUAL?window.VKM_VISUAL.notes(M,'en'):{S:[],C:[]};
+o.push('');o.push('=== TOOL SUMMARY (rule based indications, verify against the data above) ===');
+o.push('Overall indication: '+V5.overall.key+' ('+V5.overall.pct+'%)');
+o.push('Strengths: '+(N.S.join(' | ')||'none listed'));o.push('Concerns: '+(N.C.join(' | ')||'none listed'))}
+return o.join('\n')}
+function build(M,style,topic,q){var tech=style==='tech',tp=TOP[topic]||TOP.general,fd=iso(M.T.now),L=[];
+if(!tech)L=['# ROLE','You are an expert Vedic astrologer (Jyotish) trained in the Parashari tradition, doing a marriage and relationship compatibility (kundli milan) reading for a couple. Analyze the chart data below silently and use ONLY that data. Do not recalculate positions or scores, do not assume or invent any placement that is not listed, and do not ask for more information.','',
+'# RESPONSE LANGUAGE (overrides every other language instruction)','Write your ENTIRE answer in simple, natural Hindi in Devanagari script, the way a caring friend would speak. Reply in Hindi even if the question is written in English or Hinglish. Use everyday Hindi words and avoid heavy, formal Sanskrit vocabulary.','',
+'# AUDIENCE AND STYLE','The couple knows nothing about astrology. Your answer must contain NO astrological terms: do not mention planets, houses, signs, nakshatras, dashas, doshas, gunas, yogas, transits, the charts, or astrology itself. Never explain how you reached your conclusion. Speak to the couple together, refer to each partner by name, and be warm, practical and balanced. Avoid fear-based or alarming statements and do not make absolute predictions.','',
+'# SAFETY AND FAIRNESS','Never tell the couple to marry or to separate. Never predict divorce, death, illness, infertility or the failure of the relationship. A low score or a dosha is only a reason for care and open conversation, not a verdict. Treat both partners equally.','',
+'# ANSWER STRUCTURE','1. Direct answer: in 1-2 sentences, say how well the two of you fit together for the topic asked.','2. What works well: the natural strengths between the two of you, in everyday language.','3. Where care is needed: the places where you may clash or misunderstand each other, each with a gentle, practical way to handle it.','4. Timing: rough timing in calendar terms (for example "over the next 1-2 years"). Never mention dasha names or planetary periods.','5. Practical steps: 3-5 simple, actionable points for the two of you.','6. Closing: one short, honest line saying this is guidance, not a guarantee, and that important decisions are best taken together with honest talk and family advice.','Keep the answer short, personal and in small paragraphs.'];
+else L=['# ROLE','You are an expert Vedic astrologer (Jyotish) trained in the Parashari tradition, doing a detailed kundli milan (compatibility) reading for a couple. Use ONLY the data below (sidereal zodiac, Lahiri ayanamsa, whole-sign houses, Vimshottari dasha). Do not recalculate positions or scores, do not invent placements that are not listed, and do not ask for more information.','',
+'# RESPONSE LANGUAGE (overrides every other language instruction)','Write your ENTIRE answer in Hindi (Devanagari script), even if the question is written in English or Hinglish. Write astrological terms in Devanagari using their standard Hindi/Sanskrit names (for example: लग्न, भाव, राशि, नक्षत्र, महादशा, अंतर्दशा, गोचर, गुण मिलान, मांगलिक दोष), and keep all explanations in clear, simple Hindi.','',
+'# TASK','Give a detailed compatibility reading on the topic and question below. Cover, as relevant:','1. The Ashtakoota Guna Milan: explain each koota score as given, what the total means, and how serious the weak kootas really are.','2. The doshas (Manglik, Nadi, Bhakoot, Gana, Kaal Sarp) with their classical exceptions and cancellations, stating clearly which are genuinely present and which are reduced.','3. For each partner: the 7th house, its lord, Venus, Jupiter, the Navamsa (D9) and the Ashtakavarga strength of the 7th house; then how the two charts fit together, including the Moon to Moon relation.','4. The current Mahadasha / Antardasha of both partners, how they interact, and the likely marriage or relationship windows with the reasoning.','5. The current transits (gochar) of Jupiter and Saturn, including Sade Sati, and the half-year timeline.','6. Practical remedies and guidance for the couple.','7. An honest statement of uncertainty and limitations.','Support every conclusion with specific values from the data. Clearly separate strong indications from weak or mixed ones. Where the tool summary and the raw data disagree, trust the raw data.','',
+'# SAFETY AND FAIRNESS','Never tell the couple to marry or to separate, and never predict divorce, death, illness, infertility or failure of the relationship. Do not use fear-based statements. A dosha or a low score is a reason for care, not a verdict. Treat both partners equally.'];
+var o=L.join('\n')+'\n\n# TOPIC AND QUESTION\nTopic: '+tp+'\nCouple\'s question / context: '+(q||'(none, give a general compatibility reading for this topic)')+'\n\n# DATA\nToday\'s date: '+fd+'\nSidereal zodiac, Lahiri ayanamsa, whole-sign houses. Positions are computed (Moon, Sun and inner planets within about 1 arcminute; Jupiter and Saturn within a few arcminutes), so treat planets very close to a sign or nakshatra boundary with care. Rahu/Ketu are the mean nodes.\n\n'+person(M,'a',1)+'\n\n'+person(M,'b',2)+'\n\n'+couple(M);
+o+=tech?'\n\nFINAL REMINDER: Write the entire answer in Hindi (Devanagari script), including the astrological terms.':'\n\nFINAL REMINDER: Write the entire answer in simple Hindi (Devanagari script) and use no astrological terms.';
+return o}
+/* ---------- copy helpers ---------- */
+function fb(s,ok){var a=document.createElement('textarea');a.value=s;a.setAttribute('readonly','');a.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(a);a.select();var d=false;try{d=document.execCommand('copy')}catch(e){}a.remove();ok(d)}
+function copyTxt(s,ok){if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).then(function(){ok(true)},function(){fb(s,ok)});else fb(s,ok)}
+/* ---------- saved couples (localStorage, this device only) ---------- */
+function load(){try{var o=JSON.parse(localStorage.getItem(SK));return o&&typeof o==='object'?o:{}}catch(e){return{}}}
+function store(o){try{localStorage.setItem(SK,JSON.stringify(o));return true}catch(e){return false}}
+function readForm(p){var g=function(k){return $('vk-'+p+'-'+k)},st=(window.VKM_ST&&window.VKM_ST[p])||{};
+return{nm:g('nm').value,gn:g('gn').value,dd:g('dd').value,dm:g('dm').value,dy:g('dy').value,th:g('th').value,tn:g('tn').value,ta:g('ta').value,tk:g('tk').checked,pq:g('pq').value,zs:g('zs').value,pl:st.lat==null?null:{name:st.place,lat:st.lat,lon:st.lon,tz:st.tz}}}
+function writeForm(p,r){var g=function(k){return $('vk-'+p+'-'+k)};
+['nm','gn','dd','dm','dy','th','tn','ta','pq'].forEach(function(k){g(k).value=r[k]==null?'':r[k]});
+g('tk').checked=!!r.tk;g('tb').hidden=!!r.tk;g('pm').textContent='';g('cs').value='';
+if(r.pl&&window.VKM_PLACE){window.VKM_PLACE(p,r.pl);if(!r.pl.tz&&r.zs!=null)g('zs').value=r.zs}}
+function drawSaved(sel){var o=load(),k=Object.keys(o),c=$('vk-m6-saved');if(!c)return;c.hidden=!k.length;var s=$('vk-m6-sel');s.innerHTML='';k.forEach(function(n){s.add(new Option(n,n))});if(sel&&o[sel])s.value=sel}
+function initSaved(){var box=$('vk-match');if(!box||$('vk-m6-saved'))return;var d=document.createElement('div');d.className='vk-card';d.id='vk-m6-saved';d.hidden=true;
+d.innerHTML='<label for="vk-m6-sel" style="margin-top:0">Saved couples</label><div class="vk-r" style="grid-template-columns:1fr auto auto"><select id="vk-m6-sel"></select><button type="button" id="vk-m6-load" class="vk-auto vk-sec">Load</button><button type="button" id="vk-m6-del" class="vk-auto vk-sec">Delete</button></div><div class="vk-n" id="vk-m6-ss" role="status" aria-live="polite">Couples are saved only on this device.</div>';
+box.insertBefore(d,box.children[1]||null);drawSaved();
+$('vk-m6-load').onclick=function(){var n=$('vk-m6-sel').value,r=load()[n];if(!r)return;writeForm('a',r.a);writeForm('b',r.b);if(r.qs){QS.topic=TOP[r.qs.topic]?r.qs.topic:QS.topic;QS.style=r.qs.style==='tech'?'tech':'simple';QS.q=r.qs.q||''}
+$('vk-m6-ss').textContent='Loaded "'+n+'". Calculating...';$('vk-m-go').click()};
+$('vk-m6-del').onclick=function(){var n=$('vk-m6-sel').value,o=load();if(!n||!o[n])return;delete o[n];store(o);drawSaved();$('vk-m6-ss').textContent='Deleted "'+n+'".'}}
+/* ---------- results block ---------- */
+function refresh(){if(!CUR)return;var t=$('vk-m6-out');if(t)t.value=build(CUR,QS.style,QS.topic,QS.q.trim())}
+function render(M,el){if(!M.K||!M.D||!M.T)return;var old=$('vk-m-prompt');if(old)old.remove();CUR=M;M.part=6;
+var w=document.createElement('div');w.id='vk-m-prompt';
+w.innerHTML='<h3>AI prompt for the couple</h3><div class="vk-card"><label for="vk-m6-topic" style="margin-top:0">Topic</label><select id="vk-m6-topic">'+Object.keys(TOP).map(function(k){return'<option value="'+k+'">'+TOP[k]+'</option>'}).join('')+'</select>'
++'<label for="vk-m6-style">Answer style</label><select id="vk-m6-style"><option value="simple">Simple and clear (easy language, no astrology jargon)</option><option value="tech">Detailed (with astrological terms)</option></select>'
++'<label for="vk-m6-q">Your question or situation (optional)</label><textarea id="vk-m6-q" style="min-height:80px" placeholder="e.g. We are planning to marry next year. Will our families and finances be stable? What should we take care of?"></textarea></div>'
++'<div class="vk-card"><h3 style="margin-top:0">Copy your prompt</h3><div class="vk-n">Paste it into ChatGPT, Claude or Gemini. The prompt includes both charts, the Guna Milan, doshas, dashas and timing, and tells the AI to reply in Hindi.</div><button type="button" id="vk-m6-cp">Copy prompt</button>'
++'<div class="vk-tabs"><span class="vk-n" style="margin:0">Copy and open:</span><a class="vk-ai" href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a><a class="vk-ai" href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a><a class="vk-ai" href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a></div>'
++'<label for="vk-m6-out">Prompt text</label><textarea id="vk-m6-out"></textarea><div class="vk-n" id="vk-m6-st" role="status" aria-live="polite" style="min-height:1.5em"></div></div>'
++'<div class="vk-card"><b>Save this couple</b><div class="vk-n" style="margin-top:2px">Saves both birth details and your question on this device, so you can reload them later. Nothing is sent anywhere.</div><button type="button" id="vk-m6-save" class="vk-sec">Save this couple</button><div class="vk-n" id="vk-m6-sv" role="status" aria-live="polite" style="min-height:1.5em"></div></div>';
+el.appendChild(w);
+var tp=$('vk-m6-topic'),sy=$('vk-m6-style'),q=$('vk-m6-q'),st=function(t){$('vk-m6-st').textContent=t};
+tp.value=QS.topic;sy.value=QS.style;q.value=QS.q;refresh();
+tp.onchange=function(){QS.topic=tp.value;refresh()};sy.onchange=function(){QS.style=sy.value;refresh()};q.oninput=function(){QS.q=q.value;refresh()};
+var cp=function(done){copyTxt($('vk-m6-out').value,function(ok){st(ok?'Prompt copied. Paste it into the AI chat.':'Could not copy automatically. Select the text in the box and copy it.');if(done)done(ok)})};
+$('vk-m6-cp').onclick=function(){cp(function(ok){if(ok){var b=$('vk-m6-cp');b.textContent='Copied ✓';setTimeout(function(){b.textContent='Copy prompt'},1800)}})};
+[].forEach.call(w.querySelectorAll('a.vk-ai'),function(a){a.addEventListener('click',function(){cp()})});
+$('vk-m6-save').onclick=function(){var A=M.A,B=M.B,n=((A.nm||'Partner 1')+' & '+(B.nm||'Partner 2')).slice(0,60),o=load(),ks=Object.keys(o);
+if(!o[n]&&ks.length>=30){$('vk-m6-sv').textContent='You have 30 saved couples. Please delete one first.';return}
+o[n]={a:readForm('a'),b:readForm('b'),qs:{topic:QS.topic,style:QS.style,q:QS.q},t:Date.now()};
+$('vk-m6-sv').textContent=store(o)?'Saved as "'+n+'". Find it under Saved couples at the top.':'Could not save. Your browser may be blocking storage.';drawSaved(n)}}
+/* ---------- mode titles (SEO) ---------- */
+var bar=$('vk-mode'),T1=document.title,T2='Kundli Matching (Guna Milan) for Marriage – Free Online Couple Compatibility Tool';
+function titles(m){document.title=m==='match'?T2:T1;try{history.replaceState(null,'',m==='match'?'#match':location.pathname+location.search)}catch(e){}}
+if(bar){[].forEach.call(bar.children,function(b){b.addEventListener('click',function(){titles(b.dataset.m)})});if(location.hash==='#match')document.title=T2}
+initSaved();
+window.VKM_PROMPT={build:function(M,style,topic,q){return build(M,style||'simple',topic||'marriage',q||'')},topics:TOP};
+(window.VKM_HOOKS=window.VKM_HOOKS||[]).push(render);
+})();
+</script>
+</body>
+</html>
